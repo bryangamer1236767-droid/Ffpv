@@ -102,7 +102,8 @@ ROOMS = {}
 SOCKETS = {}
 
 import json as _json, os as _os
-_DB_FILE = _os.environ.get("PLAYERS_DB", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "players.json"))
+_DATA_DIR = _os.environ.get("DATA_DIR", "/data") if _os.path.isdir(_os.environ.get("DATA_DIR", "/data")) else _os.path.dirname(_os.path.abspath(__file__))
+_DB_FILE = _os.environ.get("PLAYERS_DB", _os.path.join(_DATA_DIR, "players.json"))
 
 def save_players():
     try:
@@ -143,7 +144,7 @@ def now():
 
 
 # ===== SISTEMA DE CONTAS (usuario e senha) =====
-ACCOUNTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "accounts.json")
+ACCOUNTS_FILE = os.path.join(_DATA_DIR, "accounts.json")
 
 def load_accounts():
     try:

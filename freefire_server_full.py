@@ -491,8 +491,8 @@ def token_exchange():
     d = read_auth_code(code) if code else None
     if d:
         resp = account_token_response(str(d["open_id"]), d.get("nickname", "Player"))
-        # platform deve ser INT (SDK usa optInt): 1 = GARENA
-        resp["platform"] = 1
+        # platform deve ser INT (SDK usa optInt): 4 = mesma familia do GUEST (caminho que o jogo aceita)
+        resp["platform"] = 4
         _reqlog.info("EXCHANGE OK: conta %s (open_id %s) -> tokens emitidos",
                      d.get("nickname"), d["open_id"])
         return jsonify(resp)

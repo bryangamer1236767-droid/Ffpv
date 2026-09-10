@@ -483,6 +483,13 @@ def oauth_login_do():
     return _r(redir + sep + "code=" + code, code=302)
 
 # --- OAUTH TOKEN EXCHANGE (geraico) ---
+@app.route('/debug/phone', methods=['POST', 'GET'])
+def debug_phone():
+    # telemetria do APK instrumentado (com/kryno/PhoneHome)
+    body = request.get_data(as_text=True) or str(dict(request.args))
+    _reqlog.info("!!! PHONE_HOME: %s", body[:400])
+    return "ok"
+
 @app.route('/oauth/token/exchange', methods=['POST'])
 def token_exchange():
     # O SDK GarenaMSDK envia: code=<authcode assinado>&redirect_uri=...&app_id=...&app_key=...
@@ -491,10 +498,9 @@ def token_exchange():
     d = read_auth_code(code) if code else None
     if d:
         resp = account_token_response(str(d["open_id"]), d.get("nickname", "Player"))
-        # platform deve ser INT (SDK usa optInt): 3 = FACEBOOK
-        # O jogo pediu login com plataforma 3 (botao FB); com 3 na resposta o SDK
-        # marca o token como FACEBOOK e a sessao volta pro Unity com platform=3.
-        resp["platform"] = 3
+        # Forma EXATA do login guest (que o jogo aceita): mainPlatform=0.
+        # rsp.platform=4 vem do patch do APK (GARENA val=4). Testado: 1, 3 e 4/4 falham.
+        resp["platform"] = 0
         _reqlog.info("EXCHANGE OK: conta %s (open_id %s) -> tokens emitidos",
                      d.get("nickname"), d["open_id"])
         return jsonify(resp)

@@ -542,6 +542,13 @@ def oauth_login_do():
     return _r(redir + sep + "code=" + code, code=302)
 
 # --- OAUTH TOKEN EXCHANGE (geraico) ---
+@app.route('/debug/players', methods=['GET'])
+def debug_players():
+    # lista resumida dos jogadores salvos (diagnostico)
+    out = [{"open_id": oid, "nickname": p.get("nickname"), "account": p.get("account")}
+           for oid, p in PLAYERS.items()]
+    return jsonify(out)
+
 @app.route('/debug/phone', methods=['POST', 'GET'])
 def debug_phone():
     # telemetria do APK instrumentado (com/kryno/PhoneHome)

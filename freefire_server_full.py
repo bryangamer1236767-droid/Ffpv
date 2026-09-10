@@ -127,6 +127,20 @@ def gen_open_id():
 def now():
     return int(time.time())
 
+def create_guest_account(custom_nick=None):
+    open_id = gen_open_id()
+    nickname = custom_nick or f'Guest{secrets.randbelow(99999)}'
+    at = create_token(open_id, nickname, "guest")
+    rt = create_refresh_token(open_id, nickname, "guest")
+    get_player(open_id, nickname)
+    return {
+        "open_id": open_id,
+        "access_token": at,
+        "refresh_token": rt,
+        "expires_in": 86400 * 30,
+        "token_type": "Bearer"
+    }
+
 def get_player(open_id, nickname="Player"):
     if open_id not in PLAYERS:
         PLAYERS[open_id] = {
@@ -166,7 +180,7 @@ def app_info():
         "version": CLIENT_VERSION,
         "game_server": f"{GAME_IP}:{GAME_PORT}",
         "update_url": "",
-        "notice": {"title": "Desenvolvido por Brayan", "content": "Servidor privado RZIM - conta Administrador com tudo liberado", "show": True}
+        "notice": {"title": "Servidor Privado", "content": "Bem-vindo ao servidor!", "show": True}
     })
 
 @app.route('/app/feedback', methods=['POST', 'GET'])
@@ -177,27 +191,11 @@ def feedback():
 @app.route('/oauth/guest/register', methods=['POST'])
 def guest_register():
     app_id = request.form.get('app_id', '')
-    nickname = request.form.get('nickname', f'Guest{secrets.randbelow(99999)}')
-    gender = int(request.form.get('gender', '1'))
-    password = request.form.get('password', '')
-    source = int(request.form.get('source', '0'))
-
     if app_id != APP_ID:
         return jsonify({"code": 1001, "error": "invalid_app_id"})
-
-    nickname = "Administrador"
-    open_id = "brayanadmin0000000001"
-    at = create_token(open_id, nickname, "guest")
-    rt = create_refresh_token(open_id, nickname, "guest")
-    get_player(open_id, nickname)
-
-    return jsonify({
-        "open_id": open_id,
-        "access_token": at,
-        "refresh_token": rt,
-        "expires_in": 86400 * 30,
-        "token_type": "Bearer"
-    })
+    
+    nickname = request.form.get('nickname')
+    return jsonify(create_guest_account(nickname))
 
 # --- GUEST TOKEN GRANT ---
 @app.route('/oauth/guest/token/grant', methods=['POST'])
@@ -206,19 +204,7 @@ def guest_grant():
     if app_id != APP_ID:
         return jsonify({"code": 2017, "error": "invalid_grant"})
 
-    nick = "Administrador"
-    open_id = "brayanadmin0000000001"
-    at = create_token(open_id, nick, "guest")
-    rt = create_refresh_token(open_id, nick, "guest")
-    get_player(open_id, nick)
-
-    return jsonify({
-        "open_id": open_id,
-        "access_token": at,
-        "refresh_token": rt,
-        "expires_in": 86400 * 30,
-        "token_type": "Bearer"
-    })
+    return jsonify(create_guest_account())
 
 # --- OAUTH TOKEN ---
 @app.route('/oauth/token', methods=['POST'])
@@ -227,18 +213,7 @@ def oauth_token():
     rt = request.form.get('refresh_token', '')
 
     if gt == 'authorization_code':
-        oid = gen_open_id()
-        nick = f'Player{secrets.randbelow(99999)}'
-        at = create_token(oid, nick, "oauth")
-        nr = create_refresh_token(oid, nick, "oauth")
-        get_player(oid, nick)
-        return jsonify({
-            "access_token": at,
-            "refresh_token": nr,
-            "open_id": oid,
-            "expires_in": 86400 * 30,
-            "token_type": "Bearer"
-        })
+        return jsonify(create_guest_account())
 
     elif gt == 'refresh_token':
         d = verify_refresh_token(rt)
@@ -306,7 +281,7 @@ def user_info():
         "level": p["level"],
         "exp": p["exp"],
         "avatar": p["avatar"],
-        "is_guest": d.get("type") == "guest",
+        "is_guest": True,
         "created_time": now(),
         "vip_level": p["vip"],
         "diamond": p["diamond"],
@@ -335,19 +310,24 @@ def friends_info():
 def friends_inapp():
     return jsonify({"friends": []})
 
-# --- LOGIN SOCIAL (stubs) ---
+# --- LOGIN SOCIAL (Redirecionados para criar conta Guest única) ---
 @app.route('/oauth/token/facebook/exchange', methods=['POST'])
-def fb(): return jsonify({"code": 2017, "error": "not_supported"})
+def fb(): return jsonify(create_guest_account(f'FB_{secrets.randbelow(9999)}'))
+
 @app.route('/oauth/token/google/exchange', methods=['POST'])
-def gg(): return jsonify({"code": 2017, "error": "not_supported"})
+def gg(): return jsonify(create_guest_account(f'Google_{secrets.randbelow(9999)}'))
+
 @app.route('/oauth/token/line/exchange', methods=['POST'])
-def ln(): return jsonify({"code": 2017, "error": "not_supported"})
+def ln(): return jsonify(create_guest_account(f'Line_{secrets.randbelow(9999)}'))
+
 @app.route('/oauth/token/twitter/exchange', methods=['POST'])
-def tw(): return jsonify({"code": 2017, "error": "not_supported"})
+def tw(): return jsonify(create_guest_account(f'TW_{secrets.randbelow(9999)}'))
+
 @app.route('/oauth/token/vk/exchange/v2', methods=['POST'])
-def vk(): return jsonify({"code": 2017, "error": "not_supported"})
+def vk(): return jsonify(create_guest_account(f'VK_{secrets.randbelow(9999)}'))
+
 @app.route('/oauth/token/wechat/exchange', methods=['POST'])
-def wc(): return jsonify({"code": 2017, "error": "not_supported"})
+def wc(): return jsonify(create_guest_account(f'WC_{secrets.randbelow(9999)}'))
 
 # --- BIND ---
 @app.route('/game/guest/bind', methods=['POST'])
@@ -428,16 +408,16 @@ def msdk():
 
 @app.route('/game/user/request/send', methods=['POST'])
 def req_send(): return jsonify({"success": True})
-@app.route('/google/init', methods=['POST'])
-def g_init(): return jsonify({"success": True})
+
+# --- REDIRECIONAMENTO DE ENDPOINTS GOOGLE ADICIONAIS ---
+@app.route('/google/init', methods=['POST', 'GET'])
+def g_init(): 
+    return jsonify(create_guest_account(f'Google_{secrets.randbelow(9999)}'))
 
 # --- OAUTH GARENA ---
-@app.route('/oauth/garena', methods=['GET'])
+@app.route('/oauth/garena', methods=['GET', 'POST'])
 def garena():
-    oid = gen_open_id()
-    nick = f'Player{secrets.randbelow(99999)}'
-    at = create_token(oid, nick, "garena")
-    return jsonify({"code": secrets.token_hex(16), "open_id": oid, "access_token": at})
+    return jsonify(create_guest_account(f'Garena_{secrets.randbelow(9999)}'))
 
 @app.route('/oauth/login', methods=['GET'])
 def login(): return jsonify({"login_url": "", "guest_enabled": True})
@@ -490,7 +470,8 @@ def session_token():
 # --- REFRESH TOKEN GET ---
 @app.route('/api/refresh_token_get', methods=['GET', 'POST'])
 def refresh_get():
-    return jsonify({"access_token": create_token(gen_open_id(), "Player", "guest"), "expiry_time": now() + 86400 * 30})
+    account = create_guest_account()
+    return jsonify({"access_token": account["access_token"], "expiry_time": now() + 86400 * 30})
 
 # --- HEALTH ---
 @app.route('/health', methods=['GET'])

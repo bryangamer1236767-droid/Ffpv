@@ -485,8 +485,19 @@ def oauth_login_do():
 # --- OAUTH TOKEN EXCHANGE (geraico) ---
 @app.route('/oauth/token/exchange', methods=['POST'])
 def token_exchange():
-    seed = param('uid') or param('open_id') or None
-    return jsonify(create_guest_account(None, seed))
+    # O SDK GarenaMSDK envia: code=<authcode assinado>&redirect_uri=...&app_id=...&app_key=...
+    # Precisa validar o code e devolver os tokens DA CONTA que logou na webview.
+    code = request.form.get('code', '') or param('code') or ''
+    d = read_auth_code(code) if code else None
+    if d:
+        resp = account_token_response(str(d["open_id"]), d.get("nickname", "Player"))
+        # platform deve ser INT (SDK usa optInt): 1 = GARENA
+        resp["platform"] = 1
+        _reqlog.info("EXCHANGE OK: conta %s (open_id %s) -> tokens emitidos",
+                     d.get("nickname"), d["open_id"])
+        return jsonify(resp)
+    _reqlog.info("EXCHANGE FALHOU: code invalido ou ausente: %s", code[:80])
+    return jsonify({"error": "invalid_grant"})
 
 # --- TOKEN INSPECT ---
 @app.route('/oauth/token/inspect', methods=['GET'])

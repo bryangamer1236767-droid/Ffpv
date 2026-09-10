@@ -121,22 +121,42 @@ def load_players():
 
 load_players()
 
+
+# --- Helper: le parametro de form, JSON body ou query string ---
+def param(name, default=''):
+    v = request.form.get(name)
+    if v: return v
+    if request.is_json:
+        try:
+            v = (request.get_json(silent=True) or {}).get(name)
+            if v is not None: return v
+        except Exception:
+            pass
+    v = request.args.get(name)
+    return v if v is not None else default
+
 def gen_open_id():
     return str(uuid.uuid4()).replace("-", "")[:20]
 
 def now():
     return int(time.time())
 
-def create_guest_account(custom_nick=None):
-    open_id = gen_open_id()
+def create_guest_account(custom_nick=None, seed=None):
+    # ID deterministico: mesmo dispositivo (uid) = mesma conta pra sempre
+    if seed:
+        open_id = hashlib.sha256(str(seed).encode()).hexdigest()[:20]
+    else:
+        open_id = gen_open_id()
     nickname = custom_nick or f'Guest{secrets.randbelow(99999)}'
     at = create_token(open_id, nickname, "guest")
     rt = create_refresh_token(open_id, nickname, "guest")
     get_player(open_id, nickname)
     return {
         "open_id": open_id,
+        "platform": "guest",
         "access_token": at,
         "refresh_token": rt,
+        "expiry_time": now() + 86400 * 30,
         "expires_in": 86400 * 30,
         "token_type": "Bearer"
     }
@@ -190,21 +210,17 @@ def feedback():
 # --- GUEST REGISTER ---
 @app.route('/oauth/guest/register', methods=['POST'])
 def guest_register():
-    app_id = request.form.get('app_id', '')
-    if app_id != APP_ID:
-        return jsonify({"code": 1001, "error": "invalid_app_id"})
-    
-    nickname = request.form.get('nickname')
-    return jsonify(create_guest_account(nickname))
+    nickname = param('nickname') or None
+    seed = param('uid') or param('device_id') or None
+    return jsonify(create_guest_account(nickname, seed))
 
 # --- GUEST TOKEN GRANT ---
-@app.route('/oauth/guest/token/grant', methods=['POST'])
+@app.route('/oauth/guest/token/grant', methods=['POST', 'GET'])
 def guest_grant():
-    app_id = request.form.get('app_id', '')
-    if app_id != APP_ID:
-        return jsonify({"code": 2017, "error": "invalid_grant"})
-
-    return jsonify(create_guest_account())
+    # O jogo envia: uid, password, response_type, client_type, client_id, client_secret
+    # NAO exige app_id (o SDK nunca envia nessa rota)
+    seed = param('uid') or param('client_id') or None
+    return jsonify(create_guest_account(None, seed))
 
 # --- OAUTH TOKEN ---
 @app.route('/oauth/token', methods=['POST'])
@@ -228,6 +244,19 @@ def oauth_token():
             })
 
     return jsonify({"code": 2017, "error": "invalid_grant"})
+
+
+# --- OAUTH LOGIN (webview/nativo) ---
+@app.route('/oauth/login', methods=['GET', 'POST'])
+def oauth_login():
+    seed = param('uid') or param('client_id') or None
+    return jsonify(create_guest_account(None, seed))
+
+# --- OAUTH TOKEN EXCHANGE (geraico) ---
+@app.route('/oauth/token/exchange', methods=['POST'])
+def token_exchange():
+    seed = param('uid') or param('open_id') or None
+    return jsonify(create_guest_account(None, seed))
 
 # --- TOKEN INSPECT ---
 @app.route('/oauth/token/inspect', methods=['GET'])
@@ -276,6 +305,8 @@ def user_info():
     p = get_player(oid, d.get("nickname", "Player"))
     return jsonify({
         "open_id": oid,
+        "platform": "guest",
+        "icon": "",
         "nickname": d.get("nickname", "Player"),
         "gender": 1,
         "level": p["level"],

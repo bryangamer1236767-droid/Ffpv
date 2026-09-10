@@ -228,6 +228,58 @@ def account_token_response(open_id, nickname):
         "token_type": "Bearer"
     }
 
+GUEST_IPS_FILE = "/data/guest_ips.json"
+GUEST_IPS = {}
+
+def load_guest_ips():
+    global GUEST_IPS
+    try:
+        with open(GUEST_IPS_FILE) as f:
+            GUEST_IPS = json.load(f)
+    except Exception:
+        GUEST_IPS = {}
+
+def save_guest_ips():
+    try:
+        os.makedirs("/data", exist_ok=True)
+        with open(GUEST_IPS_FILE, "w") as f:
+            json.dump(GUEST_IPS, f)
+    except Exception:
+        pass
+
+def note_guest_ip(open_id):
+    # associa o IP da requisicao ao guest que o dispositivo registrou
+    try:
+        ip = request.remote_addr or "?"
+        GUEST_IPS[ip] = {"open_id": open_id, "t": now()}
+        save_guest_ips()
+    except Exception:
+        pass
+
+def guest_open_id_for_request():
+    # 1) guest registrado por este IP; 2) ultimo guest visto; 3) jogador Guest* salvo
+    try:
+        ip = request.remote_addr or "?"
+        g = GUEST_IPS.get(ip)
+        if g and now() - g.get("t", 0) < 86400 * 30:
+            return g["open_id"]
+        best = None
+        best_t = -1
+        for v in GUEST_IPS.values():
+            if v.get("t", 0) > best_t:
+                best_t = v["t"]
+                best = v.get("open_id")
+        if best:
+            return best
+        # mapa vazio (ex: dados de antes do deploy): pega o ultimo Guest* salvo
+        for oid, p in PLAYERS.items():
+            nick = (p.get("nickname") or "")
+            if nick.startswith("Guest"):
+                return oid
+        return None
+    except Exception:
+        return None
+
 def create_guest_account(custom_nick=None, seed=None):
     # ID deterministico: mesmo dispositivo (uid) = mesma conta pra sempre
     if seed:
@@ -273,6 +325,9 @@ def get_player(open_id, nickname="Player"):
     return PLAYERS[open_id]
 
 
+load_players()
+load_guest_ips()
+
 # ==================================================================
 # ============== HTTP API SERVER (FLASK) ==============
 # ==================================================================
@@ -299,7 +354,9 @@ def feedback():
 def guest_register():
     nickname = param('nickname') or None
     seed = param('uid') or param('device_id') or None
-    return jsonify(create_guest_account(nickname, seed))
+    resp = create_guest_account(nickname, seed)
+    note_guest_ip(resp["open_id"])
+    return jsonify(resp)
 
 # --- GUEST TOKEN GRANT ---
 @app.route('/oauth/guest/token/grant', methods=['POST', 'GET'])
@@ -307,7 +364,9 @@ def guest_grant():
     # O jogo envia: uid, password, response_type, client_type, client_id, client_secret
     # NAO exige app_id (o SDK nunca envia nessa rota)
     seed = param('uid') or param('client_id') or None
-    return jsonify(create_guest_account(None, seed))
+    resp = create_guest_account(None, seed)
+    note_guest_ip(resp["open_id"])
+    return jsonify(resp)
 
 # --- OAUTH TOKEN ---
 @app.route('/oauth/token', methods=['POST'])
@@ -497,12 +556,24 @@ def token_exchange():
     code = request.form.get('code', '') or param('code') or ''
     d = read_auth_code(code) if code else None
     if d:
-        resp = account_token_response(str(d["open_id"]), d.get("nickname", "Player"))
+        # O jogo (servidor embutido 127.0.0.1) so aceita o open_id do guest registrado
+        # no aparelho. Logar por conta = usar o open_id do guest + nick da conta.
+        guest_oid = guest_open_id_for_request()
+        acc_nick = d.get("nickname", "Player")
+        if guest_oid and guest_oid != str(d["open_id"]):
+            # aplica o nick da conta no jogador guest do aparelho
+            get_player(guest_oid)
+            PLAYERS[guest_oid]["nickname"] = acc_nick
+            PLAYERS[guest_oid]["account"] = str(d["open_id"])
+            save_players()
+            _reqlog.info("EXCHANGE OK: conta %s assume guest %s", acc_nick, guest_oid)
+            resp = account_token_response(guest_oid, acc_nick)
+        else:
+            resp = account_token_response(str(d["open_id"]), acc_nick)
+            _reqlog.info("EXCHANGE OK: conta %s (open_id %s) -> tokens emitidos",
+                         acc_nick, d["open_id"])
         # Forma EXATA do login guest (que o jogo aceita): mainPlatform=0.
-        # rsp.platform=4 vem do patch do APK (GARENA val=4). Testado: 1, 3 e 4/4 falham.
         resp["platform"] = 0
-        _reqlog.info("EXCHANGE OK: conta %s (open_id %s) -> tokens emitidos",
-                     d.get("nickname"), d["open_id"])
         return jsonify(resp)
     _reqlog.info("EXCHANGE FALHOU: code invalido ou ausente: %s", code[:80])
     return jsonify({"error": "invalid_grant"})

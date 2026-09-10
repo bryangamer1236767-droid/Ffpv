@@ -271,7 +271,11 @@ def guest_open_id_for_request():
                 best = v.get("open_id")
         if best:
             return best
-        # mapa vazio (ex: dados de antes do deploy): pega o ultimo Guest* salvo
+        # mapa vazio (ex: dados de antes do deploy): guest do aparelho do dono
+        # (criado pelo jogo no primeiro boot: Guest30238, id deterministico do uid)
+        DEVICE_GUEST_OPEN_ID = "278017725955930413"
+        if DEVICE_GUEST_OPEN_ID in PLAYERS:
+            return DEVICE_GUEST_OPEN_ID
         for oid, p in PLAYERS.items():
             nick = (p.get("nickname") or "")
             if nick.startswith("Guest"):

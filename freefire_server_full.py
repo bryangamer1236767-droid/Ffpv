@@ -27,6 +27,27 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+import logging, sys
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+_reqlog = logging.getLogger("reqlog")
+
+@app.before_request
+def _log_every_request():
+    try:
+        body = request.get_data(as_text=True)
+        if len(body) > 500:
+            body = body[:500] + "...(truncado)"
+        _reqlog.info("=== %s %s | args=%s | body=%s | ua=%s",
+                      request.method, request.path, dict(request.args), body,
+                      request.headers.get("User-Agent", "")[:80])
+    except Exception as e:
+        _reqlog.info("erro ao logar request: %s", e)
+
+@app.errorhandler(404)
+def _log_404(e):
+    _reqlog.info("!!! 404 NAO MAPEADO: %s %s", request.method, request.path)
+    return jsonify({"status": "error", "code": 404, "message": "Application not found"}), 404
+
 # ==================================================================
 # CONFIGURAÇÃO
 # ==================================================================

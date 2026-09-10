@@ -215,12 +215,14 @@ def read_auth_code(code):
         return None
 
 def account_token_response(open_id, nickname):
-    at = create_token(open_id, nickname, "oauth")
-    rt = create_refresh_token(open_id, nickname, "oauth")
+    # token IDENTICO ao do fluxo guest (que o jogo aceita): type=guest.
+    # O C# do jogo le o payload do token; "oauth" era rejeitado.
+    at = create_token(open_id, nickname, "guest")
+    rt = create_refresh_token(open_id, nickname, "guest")
     get_player(open_id, nickname)
     return {
         "open_id": open_id,
-        "platform": 0,
+        "platform": "guest",
         "access_token": at,
         "refresh_token": rt,
         "expiry_time": now() + 86400 * 30,

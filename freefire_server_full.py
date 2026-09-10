@@ -136,7 +136,7 @@ def param(name, default=''):
     return v if v is not None else default
 
 def gen_open_id():
-    return str(uuid.uuid4()).replace("-", "")[:20]
+    return str(int(uuid.uuid4().hex, 16))[:18].zfill(18)
 
 def now():
     return int(time.time())
@@ -166,7 +166,10 @@ def hash_password(pw, salt=None):
     return salt, h
 
 def account_open_id(username):
-    return "acc" + hashlib.sha256(("ffacc:" + username.lower()).encode()).hexdigest()[:17]
+    # ID totalmente numerico (formato que o jogo espera de uma conta real)
+    h = hashlib.sha256(("ffacc:" + username.lower()).encode()).hexdigest()
+    num = str(int(h, 16))[:17]
+    return num.zfill(17)
 
 def make_auth_code(open_id, nickname):
     # Codigo de autorizacao assinado (funciona com varios workers, sem estado)
@@ -195,7 +198,7 @@ def account_token_response(open_id, nickname):
     get_player(open_id, nickname)
     return {
         "open_id": open_id,
-        "platform": "garena",
+        "platform": 0,
         "access_token": at,
         "refresh_token": rt,
         "expiry_time": now() + 86400 * 30,
@@ -206,7 +209,7 @@ def account_token_response(open_id, nickname):
 def create_guest_account(custom_nick=None, seed=None):
     # ID deterministico: mesmo dispositivo (uid) = mesma conta pra sempre
     if seed:
-        open_id = hashlib.sha256(str(seed).encode()).hexdigest()[:20]
+        open_id = str(int(hashlib.sha256(str(seed).encode()).hexdigest(), 16))[:18].zfill(18)
     else:
         open_id = gen_open_id()
     nickname = custom_nick or f'Guest{secrets.randbelow(99999)}'

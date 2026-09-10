@@ -141,6 +141,68 @@ def gen_open_id():
 def now():
     return int(time.time())
 
+
+# ===== SISTEMA DE CONTAS (usuario e senha) =====
+ACCOUNTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "accounts.json")
+
+def load_accounts():
+    try:
+        with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_accounts(accs):
+    try:
+        with open(ACCOUNTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(accs, f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
+def hash_password(pw, salt=None):
+    if salt is None:
+        salt = secrets.token_hex(8)
+    h = hashlib.sha256((salt + ":" + pw).encode()).hexdigest()
+    return salt, h
+
+def account_open_id(username):
+    return "acc" + hashlib.sha256(("ffacc:" + username.lower()).encode()).hexdigest()[:17]
+
+def make_auth_code(open_id, nickname):
+    # Codigo de autorizacao assinado (funciona com varios workers, sem estado)
+    payload = base64.urlsafe_b64encode(json.dumps({
+        "open_id": open_id, "nickname": nickname, "t": now(), "kind": "authcode"
+    }).encode()).decode()
+    sig = hmac.new(SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+    return payload + "." + sig
+
+def read_auth_code(code):
+    try:
+        payload, sig = code.rsplit(".", 1)
+        expected = hmac.new(SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+        if not hmac.compare_digest(sig, expected):
+            return None
+        d = json.loads(base64.urlsafe_b64decode(payload.encode()))
+        if d.get("kind") != "authcode" or now() - d.get("t", 0) > 600:
+            return None
+        return d
+    except Exception:
+        return None
+
+def account_token_response(open_id, nickname):
+    at = create_token(open_id, nickname, "oauth")
+    rt = create_refresh_token(open_id, nickname, "oauth")
+    get_player(open_id, nickname)
+    return {
+        "open_id": open_id,
+        "platform": "garena",
+        "access_token": at,
+        "refresh_token": rt,
+        "expiry_time": now() + 86400 * 30,
+        "expires_in": 86400 * 30,
+        "token_type": "Bearer"
+    }
+
 def create_guest_account(custom_nick=None, seed=None):
     # ID deterministico: mesmo dispositivo (uid) = mesma conta pra sempre
     if seed:
@@ -229,6 +291,10 @@ def oauth_token():
     rt = request.form.get('refresh_token', '')
 
     if gt == 'authorization_code':
+        code = param('code')
+        d = read_auth_code(code) if code else None
+        if d:
+            return jsonify(account_token_response(d["open_id"], d["nickname"]))
         return jsonify(create_guest_account())
 
     elif gt == 'refresh_token':
@@ -246,11 +312,150 @@ def oauth_token():
     return jsonify({"code": 2017, "error": "invalid_grant"})
 
 
-# --- OAUTH LOGIN (webview/nativo) ---
+# --- SITE DE LOGIN (abre dentro do jogo, botao do Facebook) ---
+LOGIN_PAGE = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Kryno FF - Login</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0d0b14; color:#fff; font-family:system-ui,-apple-system,sans-serif;
+       min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px; }
+.card { width:100%; max-width:360px; }
+.logo { text-align:center; margin-bottom:20px; }
+.logo h1 { font-size:30px; font-weight:800; letter-spacing:1px;
+           color:#fff; text-shadow:0 0 18px #a855f7, 0 0 40px #7c3aed; }
+.logo p { color:#8b8598; font-size:12px; margin-top:4px; }
+.tabs { display:flex; gap:8px; margin-bottom:16px; }
+.tab { flex:1; padding:11px; text-align:center; border-radius:12px; font-size:14px; font-weight:700;
+       background:#171326; color:#8b8598; border:1px solid #251f38; cursor:pointer; transition:.2s; }
+.tab.active { background:linear-gradient(135deg,#7c3aed,#a855f7); color:#fff;
+              box-shadow:0 0 16px rgba(168,85,247,.45); border-color:#a855f7; }
+form { display:none; }
+form.active { display:block; }
+label { display:block; font-size:12px; color:#b0a8c4; margin:12px 0 5px; font-weight:600; }
+input { width:100%; padding:13px 14px; border-radius:12px; border:1px solid #2a2340;
+        background:#171326; color:#fff; font-size:15px; outline:none; }
+input:focus { border-color:#a855f7; box-shadow:0 0 12px rgba(168,85,247,.35); }
+.btn { width:100%; margin-top:18px; padding:14px; border:none; border-radius:12px; font-size:15px;
+       font-weight:800; color:#fff; background:linear-gradient(135deg,#7c3aed,#c084fc);
+       box-shadow:0 0 18px rgba(168,85,247,.5); cursor:pointer; }
+.btn:active { transform:scale(.98); }
+.err { margin-top:12px; padding:10px 12px; border-radius:10px; background:#3b1220;
+       color:#fda4af; font-size:13px; border:1px solid #7f1d2e; display:none; }
+.foot { margin-top:16px; text-align:center; color:#5c5570; font-size:11px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>KRYNO FF</h1>
+    <p>Servidor Privado - Entre com sua conta</p>
+  </div>
+  <div class="tabs">
+    <div class="tab" id="tab-login" onclick="showTab('login')">Entrar</div>
+    <div class="tab active" id="tab-reg" onclick="showTab('reg')">Criar conta</div>
+  </div>
+  <form id="f-reg" class="active" method="post" action="/oauth/login/do">
+    <input type="hidden" name="action" value="register">
+    <input type="hidden" name="redirect_uri" value="__REDIR__">
+    <input type="hidden" name="client_id" value="__CID__">
+    <label>Usuário</label>
+    <input name="username" maxlength="16" placeholder="seu_usuario" required>
+    <label>Senha</label>
+    <input type="password" name="password" maxlength="32" placeholder="••••••••" required>
+    <label>Nick no jogo (opcional)</label>
+    <input name="nickname" maxlength="16" placeholder="Como vai aparecer no jogo">
+    <div class="err" id="err">__MSG__</div>
+    <button class="btn" type="submit">CRIAR CONTA E ENTRAR</button>
+  </form>
+  <form id="f-login" method="post" action="/oauth/login/do">
+    <input type="hidden" name="action" value="login">
+    <input type="hidden" name="redirect_uri" value="__REDIR__">
+    <input type="hidden" name="client_id" value="__CID__">
+    <label>Usuário</label>
+    <input name="username" maxlength="16" placeholder="seu_usuario" required>
+    <label>Senha</label>
+    <input type="password" name="password" maxlength="32" placeholder="••••••••" required>
+    <div class="err" id="err2">__MSG__</div>
+    <button class="btn" type="submit">ENTRAR NO JOGO</button>
+  </form>
+  <div class="foot">Servidor Online - v1.71</div>
+</div>
+<script>
+function showTab(t){
+  document.getElementById('f-reg').className = t==='reg' ? 'active' : '';
+  document.getElementById('f-login').className = t==='login' ? 'active' : '';
+  document.getElementById('tab-reg').className = 'tab' + (t==='reg' ? ' active' : '');
+  document.getElementById('tab-login').className = 'tab' + (t==='login' ? ' active' : '');
+}
+if ('__MSG__' !== '') {
+  document.getElementById('err').style.display='block';
+  document.getElementById('err2').style.display='block';
+  showTab('__TAB__');
+}
+</script>
+</body>
+</html>"""
+
+def render_login_page(redirect_uri="", client_id="", msg="", tab="reg"):
+    redir = redirect_uri or ("gop" + APP_ID.replace(".", "").replace("com", "", 1) + "://auth/")
+    html = LOGIN_PAGE.replace("__REDIR__", redir).replace("__CID__", client_id or "100067")
+    html = html.replace("__MSG__", msg).replace("__TAB__", tab)
+    return html
+
 @app.route('/oauth/login', methods=['GET', 'POST'])
 def oauth_login():
-    seed = param('uid') or param('client_id') or None
-    return jsonify(create_guest_account(None, seed))
+    redir = param('redirect_uri')
+    cid = param('client_id')
+    return render_login_page(redir, cid)
+
+@app.route('/oauth/login/do', methods=['POST'])
+def oauth_login_do():
+    action = param('action')
+    username = param('username').strip().lower()
+    password = param('password')
+    nickname = param('nickname').strip()
+    redir = param('redirect_uri')
+    cid = param('client_id')
+    accs = load_accounts()
+
+    def fail(msg, tab):
+        return render_login_page(redir, cid, msg, tab), 400
+
+    if not username or not password:
+        return fail("Preencha usuário e senha.", "reg" if action == "register" else "login")
+    if not username.isalnum() and not all(ch.isalnum() or ch in "_-." for ch in username):
+        return fail("Usuário só pode ter letras, números, _ - e .", "reg" if action == "register" else "login")
+
+    if action == "register":
+        if username in accs:
+            return fail("Esse usuário já existe! Tenta entrar.", "login")
+        if len(password) < 4:
+            return fail("Senha muito curta (mínimo 4).", "reg")
+        salt, h = hash_password(password)
+        oid = account_open_id(username)
+        accs[username] = {"salt": salt, "hash": h, "open_id": oid,
+                          "nickname": (nickname or username)[:16], "created": now()}
+        save_accounts(accs)
+        code = make_auth_code(oid, accs[username]["nickname"])
+    else:
+        acc = accs.get(username)
+        if not acc:
+            return fail("Conta não encontrada. Cria uma conta!", "reg")
+        salt, h = hash_password(password, acc["salt"])
+        if not hmac.compare_digest(h, acc["hash"]):
+            return fail("Senha errada!", "login")
+        code = make_auth_code(acc["open_id"], acc["nickname"])
+
+    sep = "&" if "?" in redir else "?"
+    if not redir:
+        redir = "gop100067://auth/"
+        sep = "?"
+    from flask import redirect as _r
+    return _r(redir + sep + "code=" + code, code=302)
 
 # --- OAUTH TOKEN EXCHANGE (geraico) ---
 @app.route('/oauth/token/exchange', methods=['POST'])

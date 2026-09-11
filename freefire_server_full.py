@@ -231,6 +231,7 @@ def account_token_response(open_id, nickname):
     }
 
 GUEST_IPS_FILE = "/data/guest_ips.json"
+DEVICE_GUEST_FILE = "/data/device_guest.json"
 GUEST_IPS = {}
 
 def load_guest_ips():
@@ -252,15 +253,23 @@ def save_guest_ips():
 def note_guest_ip(open_id):
     # associa o IP da requisicao ao guest que o dispositivo registrou
     try:
-        ip = request.remote_addr or "?"
+        ip = (request.headers.get("X-Forwarded-For", "") or request.remote_addr or "?").split(",")[0].strip()
         GUEST_IPS[ip] = {"open_id": open_id, "t": now()}
         save_guest_ips()
     except Exception:
         pass
 
 def guest_open_id_for_request():
-    # 1) guest registrado por este IP; 2) ultimo guest visto; 3) jogador Guest* salvo
+    # 1) guest registrado pelo PhoneHome do PROPRIO aparelho (infalivel);
+    #    2) por IP; 3) ultimo guest visto; 4) jogador Guest* salvo
     try:
+        try:
+            with open(DEVICE_GUEST_FILE) as f:
+                dg = json.load(f)
+            if dg.get("open_id") and now() - dg.get("t", 0) < 86400 * 60:
+                return dg["open_id"]
+        except Exception:
+            pass
         ip = request.remote_addr or "?"
         g = GUEST_IPS.get(ip)
         if g and now() - g.get("t", 0) < 86400 * 30:
@@ -560,6 +569,23 @@ def debug_phone():
     # telemetria do APK instrumentado (com/kryno/PhoneHome)
     body = request.get_data(as_text=True) or str(dict(request.args))
     _reqlog.info("!!! PHONE_HOME: %s", body[:400])
+    try:
+        d = json.loads(body)
+        if d.get("ev") == "rsp":
+            oid = str(d.get("openID") or "")
+            at = str(d.get("at") or "")
+            if oid and oid not in ("null", "None") and "." in at:
+                payload = at.split(".")[0]
+                pad = "=" * (-len(payload) % 4)
+                p = json.loads(base64.urlsafe_b64decode(payload + pad))
+                # so registra se o token eh um token de GUEST (nick Guest*) - evita
+                # gravar o open_id que o proprio fluxo de conta entrega (round-trip)
+                if str(p.get("nickname", "")).startswith("Guest"):
+                    with open(DEVICE_GUEST_FILE, "w") as f:
+                        json.dump({"open_id": oid, "t": now()}, f)
+                    _reqlog.info("GUEST DO APARELHO REGISTRADO: %s", oid)
+    except Exception as e:
+        _reqlog.info("phone parse: %s", e)
     return "ok"
 
 @app.route('/oauth/token/exchange', methods=['POST'])

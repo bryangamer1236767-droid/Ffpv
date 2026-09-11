@@ -893,6 +893,21 @@ def health():
         "connections": len(SOCKETS)
     })
 
+
+# --- CLOUD CONFIG (versionscommon) — cliente 2018 pede aqui ---
+@app.route('/live', methods=['GET', 'POST'])
+@app.route('/live/', methods=['GET', 'POST'])
+def live_config():
+    body = request.get_data(as_text=True)[:500]
+    print(f"[LIVE] {request.method} {request.full_path} args={dict(request.args)} body={body}", flush=True)
+    return jsonify({
+        "code": 0,
+        "status": 0,
+        "data": {"status": 0},
+        "configs": {},
+        "server_time": now()
+    })
+
 # --- CATCH ALL ---
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])

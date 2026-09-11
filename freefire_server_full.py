@@ -347,6 +347,20 @@ load_guest_ips()
 # ============== HTTP API SERVER (FLASK) ==============
 # ==================================================================
 
+# --- FACEBOOK GRAPH API STUB (app settings, chamado pelo FacebookSdk) ---
+@app.route('/v2.5/<app_id>', methods=['GET'])
+@app.route('/<path:_ver>/v2.5/<app_id>', methods=['GET'])
+def fb_graph_app_settings(app_id, _ver=None):
+    print(f"[FB_GRAPH] app_id={app_id} args={dict(request.args)}", flush=True)
+    return jsonify({
+        "android_dialog_configs": {},
+        "android_sdk_error_categories": [],
+        "gdpv4_nux_content": {},
+        "gdpv4_nux_enabled": False,
+        "id": app_id,
+        "supports_implicit_sdk_logging": True
+    })
+
 # --- INFO DA APP ---
 @app.route('/app/info/get', methods=['GET'])
 def app_info():

@@ -451,7 +451,7 @@ input:focus { border-color:#a855f7; box-shadow:0 0 12px rgba(168,85,247,.35); }
 <div class="card">
   <div class="logo">
     <h1>KRYNO FF</h1>
-    <p>Servidor Privado - Entre com sua conta</p>
+    <p>Bem-vindo ao servidor privado desenvolvido por Bryan</p>
   </div>
   <div class="tabs">
     <div class="tab" id="tab-login" onclick="showTab('login')">Entrar</div>
@@ -481,7 +481,7 @@ input:focus { border-color:#a855f7; box-shadow:0 0 12px rgba(168,85,247,.35); }
     <div class="err" id="err2">__MSG__</div>
     <button class="btn" type="submit">ENTRAR NO JOGO</button>
   </form>
-  <div class="foot">Servidor Online - v1.71</div>
+  <div class="foot">Servidor Privado por Bryan - Online - v1.71</div>
 </div>
 <script>
 function showTab(t){
@@ -906,7 +906,7 @@ def livever():
         "code": 0,
         "is_server_open": True,
         "is_firewall_open": False,
-        "billboard_msg": "",
+        "billboard_msg": "Bem-vindo ao servidor privado desenvolvido por Bryan",
         "remote_version": version,
         "remote_option_version": version,
         "cdn_url": "https://cdn.barbosasmobile.com/",

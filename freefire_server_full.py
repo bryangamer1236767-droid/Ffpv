@@ -899,15 +899,26 @@ def health():
 @app.route('/livever.php', methods=['GET', 'POST'])
 def livever():
     args = dict(request.args)
+    version = args.get('version', '1.25.3')
     print(f"[LIVEVER] {request.method} args={args}", flush=True)
-    # stub identico ao servidor original do mod (formato FB/Garena SDK)
+    # resposta clonada do versionscommon.barbosasmobile.com/live/ver.php (formato real HttpVerInfo)
     return jsonify({
-        "android_dialog_configs": {},
-        "android_sdk_error_categories": [],
-        "gdpv4_nux_content": {},
-        "gdpv4_nux_enabled": False,
-        "id": "livever.php",
-        "supports_implicit_sdk_logging": True
+        "code": 0,
+        "is_server_open": True,
+        "is_firewall_open": False,
+        "billboard_msg": "",
+        "remote_version": version,
+        "remote_option_version": version,
+        "cdn_url": "https://cdn.barbosasmobile.com/",
+        "server_url": "https://web-production-115c6.up.railway.app/",
+        "is_review_server": False,
+        "appstore_url": "",
+        "force_to_restart_app": False,
+        "country_code": "BR",
+        "gdpr_version": 2,
+        "maintenance_announcement": "",
+        "maintenance_region": "",
+        "client_ip": request.remote_addr or "0.0.0.0"
     })
 
 # --- CLOUD CONFIG (versionscommon) — cliente 2018 pede aqui ---

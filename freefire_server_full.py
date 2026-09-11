@@ -894,6 +894,29 @@ def health():
     })
 
 
+
+# --- LIVEVER (checagem de versao/manutencao - cliente 2018) ---
+@app.route('/livever.php', methods=['GET', 'POST'])
+def livever():
+    args = dict(request.args)
+    version = args.get('version', '1.25.3')
+    print(f"[LIVEVER] {request.method} args={args}", flush=True)
+    return jsonify({
+        "is_server_open": True,
+        "is_firewall_open": False,
+        "remote_version": version,
+        "remote_option_version": version,
+        "cdn_url": "",
+        "server_url": "https://web-production-115c6.up.railway.app",
+        "is_review_server": False,
+        "appstore_url": "",
+        "force_to_restart_app": False,
+        "country_code": "BR",
+        "gdpr_version": "1",
+        "maintenance_announcement": "",
+        "maintenance_region": ""
+    })
+
 # --- CLOUD CONFIG (versionscommon) — cliente 2018 pede aqui ---
 @app.route('/live', methods=['GET', 'POST'])
 @app.route('/live/', methods=['GET', 'POST'])

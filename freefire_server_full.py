@@ -906,7 +906,7 @@ def livever():
         "is_firewall_open": False,
         "remote_version": version,
         "remote_option_version": version,
-        "cdn_url": "",
+        "cdn_url": "https://freefiremobile-a.akamaihd.net/sbt/ABHotUpdates/",
         "server_url": "https://web-production-115c6.up.railway.app",
         "is_review_server": False,
         "appstore_url": "",

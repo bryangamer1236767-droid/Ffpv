@@ -582,8 +582,9 @@ def debug_phone():
                 # gravar o open_id que o proprio fluxo de conta entrega (round-trip)
                 if str(p.get("nickname", "")).startswith("Guest"):
                     with open(DEVICE_GUEST_FILE, "w") as f:
-                        json.dump({"open_id": oid, "t": now()}, f)
-                    _reqlog.info("GUEST DO APARELHO REGISTRADO: %s", oid)
+                        json.dump({"open_id": oid, "t": now(), "at": at,
+                                   "nick": p.get("nickname"), "expire": p.get("expire")}, f)
+                    _reqlog.info("GUEST DO APARELHO REGISTRADO: %s (token cache salvo)", oid)
     except Exception as e:
         _reqlog.info("phone parse: %s", e)
     return "ok"
@@ -613,6 +614,20 @@ def token_exchange():
                          acc_nick, d["open_id"])
         # Forma EXATA do login guest (que o jogo aceita): mainPlatform=0.
         resp["platform"] = 0
+        # REPLAY: se PhoneHome capturou o token guest em cache no aparelho,
+        # devolver o MESMO token - o jogo nao consegue distinguir do login guest
+        try:
+            with open(DEVICE_GUEST_FILE) as f:
+                dg = json.load(f)
+            if dg.get("at") and dg.get("open_id") == resp.get("open_id"):
+                resp["access_token"] = dg["at"]
+                if dg.get("expire"):
+                    resp["expiry_time"] = dg["expire"]
+                    resp["expires_in"] = max(0, dg["expire"] - now())
+                _reqlog.info("REPLAY: usando token guest em cache do aparelho (%s exp %s)",
+                             dg.get("nick"), dg.get("expire"))
+        except Exception as e:
+            _reqlog.info("replay skip: %s", e)
         return jsonify(resp)
     _reqlog.info("EXCHANGE FALHOU: code invalido ou ausente: %s", code[:80])
     return jsonify({"error": "invalid_grant"})

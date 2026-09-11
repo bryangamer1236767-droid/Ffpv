@@ -1,0 +1,1 @@
+ redeploy 2026-09-11: restaurar HEAD a5ad6f7 (fixes guest)

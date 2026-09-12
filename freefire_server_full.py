@@ -346,6 +346,7 @@ load_guest_ips()
 # codigos oauth capturados do servidor RZIM (login ponte)
 RZIM_CODES = {}
 RZIM_LAST = {}
+RZIM_SESSIONS = {}
 
 # ==================================================================
 # ============== HTTP API SERVER (FLASK) ==============
@@ -429,6 +430,21 @@ def oauth_token():
 
     if gt == 'authorization_code':
         code = param('code')
+        if code and code.startswith("rzim_"):
+            info = RZIM_CODES.get(code)
+            _reqlog.info("[RZIM-EXCHANGE] code=%s info=%s", code[:12], info)
+            if info:
+                sess = RZIM_SESSIONS.get(info.get("username", ""))
+                if sess:
+                    _reqlog.info("[RZIM-EXCHANGE] devolvendo sessao deles: open_id=%s", sess["open_id"])
+                    return jsonify({
+                        "open_id": sess["open_id"],
+                        "access_token": sess["access_token"],
+                        "refresh_token": create_refresh_token(sess["open_id"], info.get("username", "rzim"), "oauth"),
+                        "expires_in": 86400 * 30,
+                        "token_type": "Bearer",
+                    })
+            return jsonify({"code": 2017, "error": "invalid_grant"})
         d = read_auth_code(code) if code else None
         if d:
             return jsonify(account_token_response(d["open_id"], d["nickname"]))
@@ -634,6 +650,56 @@ def oauth_login_do():
                 from flask import redirect as _r3
                 return _r3(rr + sep2 + "code=" + our_code, code=302)
             if "Login OK" in body:
+                _reqlog.info("[RZIM] LOGIN OK - trocando code por tokens na hora...")
+                import base64 as _b64, json as _js
+                msr = _re.search(r'signed_request=([A-Za-z0-9_\-\.]+)', body)
+                if msr:
+                    try:
+                        _sig, _pl = msr.group(1).split('.', 1)
+                        _pl += "=" * (-len(_pl) % 4)
+                        _sr = _js.loads(_b64.urlsafe_b64decode(_pl))
+                        _hcode = _sr.get("code", "")
+                        _huid = _sr.get("user_id", "")
+                        _reqlog.info("[RZIM] user_id=%s code=%s...", _huid, _hcode[:16])
+                        # tenta trocar no auth deles com combinacoes de parametros
+                        import urllib.request as _ur2, urllib.parse as _up2
+                        _toks = None
+                        for _cid in ("6002969496135738", "100067"):
+                            for _sec in ("B3EEABB8EE11C2BE770B684D95219ECB", ""):
+                                for _rd in ("fbconnect://success", "gopdtsfreefireth://auth/"):
+                                    try:
+                                        _d2 = _up2.urlencode({
+                                            "grant_type": "authorization_code", "code": _hcode,
+                                            "client_id": _cid, "redirect_uri": _rd,
+                                            "client_secret": _sec}).encode()
+                                        _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token", data=_d2)
+                                        _rq2.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
+                                        _rq2.add_header("Content-Type", "application/x-www-form-urlencoded")
+                                        _rsp2 = _ur2.urlopen(_rq2, timeout=15)
+                                        _b2 = _rsp2.read().decode(errors="replace")
+                                        _reqlog.info("[RZIM-TOKEN] cid=%s sec=%s rd=%s -> %s", _cid, bool(_sec), _rd, _b2[:300])
+                                        if "access_token" in _b2:
+                                            _toks = _js.loads(_b2)
+                                            break
+                                    except Exception as _e2:
+                                        _reqlog.info("[RZIM-TOKEN] erro cid=%s: %s", _cid, _e2)
+                                if _toks: break
+                            if _toks: break
+                        if _toks:
+                            RZIM_SESSIONS[username] = {"open_id": str(_toks.get("open_id") or _huid),
+                                                       "access_token": _toks.get("access_token", ""),
+                                                       "raw": _toks, "ts": now()}
+                            _reqlog.info("[RZIM] SESSAO DO SERVIDOR DELES OBTIDA! open_id=%s", RZIM_SESSIONS[username]["open_id"])
+                            our_code = "rzim_" + _uuid.uuid4().hex[:20]
+                            RZIM_CODES[our_code] = {"username": username}
+                            sep2 = "&" if "?" in (redir or "") else "?"
+                            rr = redir or "gop100067://auth/"
+                            from flask import redirect as _r3
+                            return _r3(rr + sep2 + "code=" + our_code, code=302)
+                        return render_login_page(redir, cid, "Conectou no servidor deles mas a troca de token falhou - olha os logs.", "login")
+                    except Exception as _e3:
+                        _reqlog.info("[RZIM] erro ao processar signed_request: %s", _e3)
+                        return render_login_page(redir, cid, "Erro processando resposta deles: " + str(_e3)[:60], "login")
                 _reqlog.info("[RZIM] LOGIN OK MAS SEM CODIGO NA PAGINA - corpo completo salvo")
             if status in (301, 302, 303) and ("code=" in (loc or "")):
                 his_code = (loc.split("code=")[-1].split("&")[0]).strip()

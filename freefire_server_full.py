@@ -619,7 +619,7 @@ def debug_players():
 def debug_phone():
     # telemetria do APK instrumentado (com/kryno/PhoneHome)
     body = request.get_data(as_text=True) or str(dict(request.args))
-    _reqlog.info("!!! PHONE_HOME: %s", body[:400])
+    _reqlog.info("!!! PHONE_HOME: %s", body[:1600] if body.startswith("CRASH_TRACE") else body[:400])
     try:
         d = json.loads(body)
         if d.get("ev") == "rsp":

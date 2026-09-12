@@ -519,10 +519,40 @@ def render_login_page(redirect_uri="", client_id="", msg="", tab="reg"):
     html = html.replace("__MSG__", msg).replace("__TAB__", tab)
     return html
 
+def make_auto_cookie(username):
+    sig = hmac.new(SECRET_KEY.encode(), ("auto:" + username).encode(), hashlib.sha256).hexdigest()[:32]
+    return username + "." + sig
+
+def read_auto_cookie(val):
+    try:
+        if not val or "." not in val:
+            return None
+        username, sig = val.rsplit(".", 1)
+        expected = hmac.new(SECRET_KEY.encode(), ("auto:" + username).encode(), hashlib.sha256).hexdigest()[:32]
+        if not hmac.compare_digest(sig, expected):
+            return None
+        return username
+    except Exception:
+        return None
+
 @app.route('/oauth/login', methods=['GET', 'POST'])
 def oauth_login():
     redir = param('redirect_uri')
     cid = param('client_id')
+    # AUTO-LOGIN: se o aparelho ja logou antes (cookie assinado), entra direto sem digitar nada
+    try:
+        username = read_auto_cookie(request.cookies.get('ffauto'))
+        if username and param('reauth') != '1':
+            acc = load_accounts().get(username)
+            if acc:
+                code = make_auth_code(acc['open_id'], acc['nickname'])
+                r = redir or ("gop" + APP_ID.replace(".", "").replace("com", "", 1) + "://auth/")
+                sep = "&" if "?" in r else "?"
+                _reqlog.info("[AUTO-LOGIN] cookie valido -> entrada direta da conta %s", username)
+                from flask import redirect as _r2
+                return _r2(r + sep + "code=" + code, code=302)
+    except Exception as e:
+        _reqlog.info("[AUTO-LOGIN] falhou: %s", e)
     return render_login_page(redir, cid)
 
 @app.route('/oauth/login/do', methods=['POST'])
@@ -568,7 +598,14 @@ def oauth_login_do():
         redir = "gop100067://auth/"
         sep = "?"
     from flask import redirect as _r
-    return _r(redir + sep + "code=" + code, code=302)
+    resp = _r(redir + sep + "code=" + code, code=302)
+    # guarda cookie assinado: proximas entradas sao automaticas neste aparelho
+    try:
+        resp.set_cookie('ffauto', make_auto_cookie(username), max_age=90*24*3600, httponly=True)
+        _reqlog.info("[AUTO-LOGIN] cookie gravado para a conta %s", username)
+    except Exception as e:
+        _reqlog.info("[AUTO-LOGIN] erro ao gravar cookie: %s", e)
+    return resp
 
 # --- OAUTH TOKEN EXCHANGE (geraico) ---
 @app.route('/debug/players', methods=['GET'])

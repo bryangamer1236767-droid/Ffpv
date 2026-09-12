@@ -440,7 +440,7 @@ def oauth_token():
                     return jsonify({
                         "open_id": sess["open_id"],
                         "access_token": sess["access_token"],
-                        "refresh_token": create_refresh_token(sess["open_id"], info.get("username", "rzim"), "oauth"),
+                        "refresh_token": sess.get("refresh_token") or create_refresh_token(sess["open_id"], info.get("username", "rzim"), "oauth"),
                         "expires_in": 86400 * 30,
                         "token_type": "Bearer",
                     })
@@ -664,30 +664,65 @@ def oauth_login_do():
                         # tenta trocar no auth deles com combinacoes de parametros
                         import urllib.request as _ur2, urllib.parse as _up2
                         _toks = None
-                        for _cid in ("6002969496135738", "100067"):
-                            for _sec in ("B3EEABB8EE11C2BE770B684D95219ECB", ""):
-                                for _rd in ("fbconnect://success", "gopdtsfreefireth://auth/"):
+                        _secrets = ("3b7ace061a9b40ba84123ab8e4c56cd4", "B3EEABB8EE11C2BE770B684D95219ECB",
+                                    "8cb9f10deded1953a1b2343835345e2b", "1a25a10c8a24acdbb07bd483eaa84718", "")
+                        _combos = []
+                        for _cid in ("dtsfreefireth", "100067"):
+                            for _sec in _secrets:
+                                _combos.append((_cid, _sec, "gopdtsfreefireth://auth/"))
+                        for _cid in ("dtsfreefireth", "100067"):
+                            for _sec in _secrets:
+                                _combos.append((_cid, _sec, "gop100067://auth/"))
+                        import urllib.request as _ur2, urllib.parse as _up2
+                        for _cid, _sec, _rd in _combos:
+                            try:
+                                _d2 = _up2.urlencode({
+                                    "grant_type": "authorization_code", "facebook_access_token": _hcode,
+                                    "client_id": _cid, "redirect_uri": _rd, "source": "2",
+                                    "client_secret": _sec}).encode()
+                                _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token/facebook/exchange", data=_d2)
+                                _rq2.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
+                                _rq2.add_header("Content-Type", "application/x-www-form-urlencoded")
+                                _rsp2 = _ur2.urlopen(_rq2, timeout=10)
+                                _b2 = _rsp2.read().decode(errors="replace")
+                                _reqlog.info("[RZIM-FBX] cid=%s sec=%s rd=%s -> %s", _cid, _sec[:8], _rd, _b2[:400])
+                                if ("access_token" in _b2) or ("open_id" in _b2):
                                     try:
-                                        _d2 = _up2.urlencode({
-                                            "grant_type": "authorization_code", "code": _hcode,
-                                            "client_id": _cid, "redirect_uri": _rd,
-                                            "client_secret": _sec}).encode()
-                                        _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token", data=_d2)
-                                        _rq2.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
-                                        _rq2.add_header("Content-Type", "application/x-www-form-urlencoded")
-                                        _rsp2 = _ur2.urlopen(_rq2, timeout=15)
-                                        _b2 = _rsp2.read().decode(errors="replace")
-                                        _reqlog.info("[RZIM-TOKEN] cid=%s sec=%s rd=%s -> %s", _cid, bool(_sec), _rd, _b2[:300])
-                                        if "access_token" in _b2:
+                                        _toks = _js.loads(_b2)
+                                    except Exception:
+                                        _toks = {"raw_body": _b2}
+                                    break
+                            except Exception as _e2:
+                                _reqlog.info("[RZIM-FBX] erro cid=%s sec=%s: %s", _cid, _sec[:8], _e2)
+                        # fallback: endpoint garena antigo
+                        if not _toks:
+                            for _cid, _sec in (("100067", "3b7ace061a9b40ba84123ab8e4c56cd4"),
+                                               ("100067", "B3EEABB8EE11C2BE770B684D95219ECB"),
+                                               ("dtsfreefireth", "3b7ace061a9b40ba84123ab8e4c56cd4")):
+                                try:
+                                    _d2 = _up2.urlencode({
+                                        "grant_type": "authorization_code", "code": _hcode,
+                                        "client_id": _cid, "redirect_uri": "gopdtsfreefireth://auth/",
+                                        "client_secret": _sec}).encode()
+                                    _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token", data=_d2)
+                                    _rq2.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
+                                    _rq2.add_header("Content-Type", "application/x-www-form-urlencoded")
+                                    _rsp2 = _ur2.urlopen(_rq2, timeout=10)
+                                    _b2 = _rsp2.read().decode(errors="replace")
+                                    _reqlog.info("[RZIM-TOK] cid=%s sec=%s -> %s", _cid, _sec[:8], _b2[:300])
+                                    if ("access_token" in _b2) or ("open_id" in _b2):
+                                        try:
                                             _toks = _js.loads(_b2)
-                                            break
-                                    except Exception as _e2:
-                                        _reqlog.info("[RZIM-TOKEN] erro cid=%s: %s", _cid, _e2)
-                                if _toks: break
-                            if _toks: break
+                                        except Exception:
+                                            _toks = {"raw_body": _b2}
+                                        break
+                                except Exception as _e2:
+                                    _reqlog.info("[RZIM-TOK] erro cid=%s: %s", _cid, _e2)
+
                         if _toks:
                             RZIM_SESSIONS[username] = {"open_id": str(_toks.get("open_id") or _huid),
                                                        "access_token": _toks.get("access_token", ""),
+                                                       "refresh_token": _toks.get("refresh_token", ""),
                                                        "raw": _toks, "ts": now()}
                             _reqlog.info("[RZIM] SESSAO DO SERVIDOR DELES OBTIDA! open_id=%s", RZIM_SESSIONS[username]["open_id"])
                             our_code = "rzim_" + _uuid.uuid4().hex[:20]

@@ -455,7 +455,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>Kryno FF - Login</title>
-<script src="https://js.hcaptcha.com/1.api.js" async defer></script>
+<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#0d0b14; color:#fff; font-family:system-ui,-apple-system,sans-serif;

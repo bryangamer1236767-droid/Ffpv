@@ -555,6 +555,15 @@ if ('__MSG__' !== '') {
 </body>
 </html>"""
 
+def redirect_js(rr, code):
+    url = rr + (("&" if "?" in rr else "?") + "code=" + code)
+    return ('<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'
+            '<body style="background:#12122b;color:#e8e0ff;font-family:sans-serif;text-align:center;padding-top:40px">'
+            '<h3>Conectado! Voltando ao jogo...</h3>'
+            '<p><a style="color:#a78bfa" href="' + url + '">Toque aqui se nao voltar sozinho</a></p>'
+            '<script>setTimeout(function(){location.href=' + json.dumps(url) + ';},400);</script>'
+            '</body></html>'), 200
+
 def render_login_page(redirect_uri="", client_id="", msg="", tab="reg"):
     redir = redirect_uri or ("gop" + APP_ID.replace(".", "").replace("com", "", 1) + "://auth/")
     html = LOGIN_PAGE.replace("__REDIR__", redir).replace("__CID__", client_id or "100067")
@@ -646,10 +655,8 @@ def oauth_login_do():
                 our_code = "rzim_" + _uu.uuid4().hex[:20]
                 RZIM_CODES[our_code] = {"his_code": his_code, "username": username}
                 _reqlog.info("[RZIM] CODIGO CAPTURADO! our=%s his=%s...", our_code, his_code[:14])
-                sep2 = "&" if "?" in (redir or "") else "?"
                 rr = redir or "gop100067://auth/"
-                from flask import redirect as _r3
-                return _r3(rr + sep2 + "code=" + our_code, code=302)
+                return redirect_js(rr, our_code)
             if "Login OK" in body:
                 _reqlog.info("[RZIM] LOGIN OK - trocando code por tokens na hora...")
                 import base64 as _b64, json as _js
@@ -729,10 +736,8 @@ def oauth_login_do():
                             import uuid as _uu
                             our_code = "rzim_" + _uu.uuid4().hex[:20]
                             RZIM_CODES[our_code] = {"username": username}
-                            sep2 = "&" if "?" in (redir or "") else "?"
                             rr = redir or "gop100067://auth/"
-                            from flask import redirect as _r3
-                            return _r3(rr + sep2 + "code=" + our_code, code=302)
+                            return redirect_js(rr, our_code)
                         # OPENID GAMBLE: devolver sessao com o open_id REAL deles (user_id do JWT)
                         import uuid as _uu
                         RZIM_SESSIONS[username] = {"open_id": str(_huid), "access_token": _hcode,
@@ -740,10 +745,8 @@ def oauth_login_do():
                         our_code = "rzim_" + _uu.uuid4().hex[:20]
                         RZIM_CODES[our_code] = {"username": username}
                         _reqlog.info("[RZIM-OPENID] redirecionando com open_id deles %s (code=%s...)", _huid, our_code)
-                        sep2 = "&" if "?" in (redir or "") else "?"
                         rr = redir or "gop100067://auth/"
-                        from flask import redirect as _r3
-                        return _r3(rr + sep2 + "code=" + our_code, code=302)
+                        return redirect_js(rr, our_code)
                     except Exception as _e3:
                         _reqlog.info("[RZIM] erro ao processar signed_request: %s", _e3)
                         return render_login_page(redir, cid, "Erro processando resposta deles: " + str(_e3)[:60], "login")
@@ -780,12 +783,10 @@ def oauth_login_do():
             return fail("Senha errada!", "login")
         code = make_auth_code(acc["open_id"], acc["nickname"])
 
-    sep = "&" if "?" in redir else "?"
     if not redir:
         redir = "gop100067://auth/"
-        sep = "?"
-    from flask import redirect as _r
-    resp = _r(redir + sep + "code=" + code, code=302)
+    from flask import make_response as _mr
+    resp = _mr(redirect_js(redir, code)[0])
     # guarda cookie assinado: proximas entradas sao automaticas neste aparelho
     try:
         resp.set_cookie('ffauto', make_auto_cookie(username), max_age=90*24*3600, httponly=True)

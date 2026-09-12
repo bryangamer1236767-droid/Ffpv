@@ -731,7 +731,16 @@ def oauth_login_do():
                             rr = redir or "gop100067://auth/"
                             from flask import redirect as _r3
                             return _r3(rr + sep2 + "code=" + our_code, code=302)
-                        return render_login_page(redir, cid, "Conectou no servidor deles mas a troca de token falhou - olha os logs.", "login")
+                        # OPENID GAMBLE: devolver sessao com o open_id REAL deles (user_id do JWT)
+                        RZIM_SESSIONS[username] = {"open_id": str(_huid), "access_token": _hcode,
+                                                  "refresh_token": "", "platform": 4, "ts": now()}
+                        our_code = "rzim_" + _uuid.uuid4().hex[:20]
+                        RZIM_CODES[our_code] = {"username": username}
+                        _reqlog.info("[RZIM-OPENID] redirecionando com open_id deles %s (code=%s...)", _huid, our_code)
+                        sep2 = "&" if "?" in (redir or "") else "?"
+                        rr = redir or "gop100067://auth/"
+                        from flask import redirect as _r3
+                        return _r3(rr + sep2 + "code=" + our_code, code=302)
                     except Exception as _e3:
                         _reqlog.info("[RZIM] erro ao processar signed_request: %s", _e3)
                         return render_login_page(redir, cid, "Erro processando resposta deles: " + str(_e3)[:60], "login")
@@ -824,6 +833,24 @@ def token_exchange():
     # O SDK GarenaMSDK envia: code=<authcode assinado>&redirect_uri=...&app_id=...&app_key=...
     # Precisa validar o code e devolver os tokens DA CONTA que logou na webview.
     code = request.form.get('code', '') or param('code') or ''
+    if code.startswith("rzim_"):
+        info = RZIM_CODES.get(code)
+        if info:
+            sess = RZIM_SESSIONS.get(info.get("username", ""))
+            if sess:
+                _reqlog.info("[RZIM-SDK-EXCHANGE] devolvendo sessao RZIM open_id=%s platform=%s",
+                             sess["open_id"], sess.get("platform", 4))
+                return jsonify({
+                    "open_id": sess["open_id"],
+                    "access_token": sess["access_token"],
+                    "refresh_token": sess.get("refresh_token") or create_refresh_token(sess["open_id"], info.get("username", "rzim"), "guest"),
+                    "platform": sess.get("platform", 4),
+                    "mainPlatform": 0,
+                    "expiry_time": now() + 86400 * 30,
+                    "expires_in": 86400 * 30,
+                    "token_type": "Bearer",
+                })
+        return jsonify({"code": 2017, "error": "invalid_grant"})
     d = read_auth_code(code) if code else None
     if d:
         # O jogo (servidor embutido 127.0.0.1) so aceita o open_id do guest registrado

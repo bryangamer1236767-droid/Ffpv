@@ -35,8 +35,8 @@ _reqlog = logging.getLogger("reqlog")
 def _log_every_request():
     try:
         body = request.get_data(as_text=True)
-        if len(body) > 500:
-            body = body[:500] + "...(truncado)"
+        if len(body) > 2500:
+            body = body[:2500] + "...(truncado)"
         _reqlog.info("=== %s %s | args=%s | body=%s | ua=%s",
                       request.method, request.path, dict(request.args), body,
                       request.headers.get("User-Agent", "")[:80])

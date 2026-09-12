@@ -345,6 +345,7 @@ load_guest_ips()
 
 # codigos oauth capturados do servidor RZIM (login ponte)
 RZIM_CODES = {}
+RZIM_LAST = {}
 
 # ==================================================================
 # ============== HTTP API SERVER (FLASK) ==============
@@ -617,7 +618,23 @@ def oauth_login_do():
                 body, status, loc = rsp.read().decode(errors="replace"), rsp.status, rsp.headers.get("Location", "")
             except _ue.HTTPError as _e:
                 body, status, loc = _e.read().decode(errors="replace"), _e.code, _e.headers.get("Location", "")
-            _reqlog.info("[RZIM] status=%s loc=%s body=%s", status, loc[:300], body[:600])
+            RZIM_LAST["status"] = status
+            RZIM_LAST["loc"] = loc
+            RZIM_LAST["body"] = body
+            _reqlog.info("[RZIM] status=%s loc=%s body=%s", status, loc[:300], body[:3000])
+            import re as _re
+            m = _re.search(r'code=([A-Za-z0-9_\-\.\+\/=]{8,})', body + "|" + (loc or ""))
+            if status in (200, 301, 302, 303) and m:
+                his_code = m.group(1)
+                our_code = "rzim_" + _uuid.uuid4().hex[:20]
+                RZIM_CODES[our_code] = {"his_code": his_code, "username": username}
+                _reqlog.info("[RZIM] CODIGO CAPTURADO! our=%s his=%s...", our_code, his_code[:14])
+                sep2 = "&" if "?" in (redir or "") else "?"
+                rr = redir or "gop100067://auth/"
+                from flask import redirect as _r3
+                return _r3(rr + sep2 + "code=" + our_code, code=302)
+            if "Login OK" in body:
+                _reqlog.info("[RZIM] LOGIN OK MAS SEM CODIGO NA PAGINA - corpo completo salvo")
             if status in (301, 302, 303) and ("code=" in (loc or "")):
                 his_code = (loc.split("code=")[-1].split("&")[0]).strip()
                 RZIM_CODES[his_code] = username
@@ -671,6 +688,10 @@ def debug_players():
     out = [{"open_id": oid, "nickname": p.get("nickname"), "account": p.get("account")}
            for oid, p in PLAYERS.items()]
     return jsonify(out)
+
+@app.route('/debug/rzim_last', methods=['GET'])
+def debug_rzim_last():
+    return jsonify(RZIM_LAST)
 
 @app.route('/debug/phone', methods=['POST', 'GET'])
 def debug_phone():

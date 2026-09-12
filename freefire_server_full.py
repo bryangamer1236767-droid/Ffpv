@@ -981,7 +981,7 @@ def livever():
         "remote_version": version,
         "remote_option_version": version,
         "cdn_url": "https://cdn.barbosasmobile.com/",
-        "server_url": "https://web-production-115c6.up.railway.app/",
+        "server_url": "https://loginbp.barbosasmobile.com/",
         "is_review_server": False,
         "appstore_url": "",
         "force_to_restart_app": False,

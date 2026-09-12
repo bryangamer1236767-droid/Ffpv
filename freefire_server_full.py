@@ -348,18 +348,38 @@ load_guest_ips()
 # ==================================================================
 
 # --- FACEBOOK GRAPH API STUB (app settings, chamado pelo FacebookSdk) ---
-@app.route('/v2.5/<app_id>', methods=['GET'])
-@app.route('/<path:_ver>/v2.5/<app_id>', methods=['GET'])
-def fb_graph_app_settings(app_id, _ver=None):
-    print(f"[FB_GRAPH] app_id={app_id} args={dict(request.args)}", flush=True)
+# Cobre QUALQUER versao da Graph API (v2.5, v9.0, v12.0, etc) - o SDK negocia
+# a versao dinamicamente e nao podemos travar em uma so, senao o app trava
+# tentando repetidamente e acaba fechando sozinho.
+FB_APP_ID = "2036793259884297"
+
+@app.route(f'/<ver>/{FB_APP_ID}', methods=['GET'])
+@app.route(f'/<path:_prefix>/<ver>/{FB_APP_ID}', methods=['GET'])
+def fb_graph_app_settings(ver, _prefix=None):
+    print(f"[FB_GRAPH] ver={ver} app_id={FB_APP_ID} args={dict(request.args)}", flush=True)
     return jsonify({
         "android_dialog_configs": {},
         "android_sdk_error_categories": [],
         "gdpv4_nux_content": {},
         "gdpv4_nux_enabled": False,
-        "id": app_id,
+        "id": FB_APP_ID,
         "supports_implicit_sdk_logging": True
     })
+
+@app.route(f'/<ver>/{FB_APP_ID}/mobile_sdk_gk', methods=['GET'])
+@app.route(f'/<path:_prefix>/<ver>/{FB_APP_ID}/mobile_sdk_gk', methods=['GET'])
+def fb_graph_gatekeepers(ver, _prefix=None):
+    print(f"[FB_GRAPH_GK] ver={ver} args={dict(request.args)}", flush=True)
+    return jsonify({
+        "data": [],
+        "id": FB_APP_ID
+    })
+
+@app.route(f'/<ver>/{FB_APP_ID}/activities', methods=['POST'])
+@app.route(f'/<path:_prefix>/<ver>/{FB_APP_ID}/activities', methods=['POST'])
+def fb_graph_activities(ver, _prefix=None):
+    print(f"[FB_GRAPH_ACTIVITIES] ver={ver} (analytics - ignorado)", flush=True)
+    return jsonify({"success": True})
 
 # --- INFO DA APP ---
 @app.route('/app/info/get', methods=['GET'])

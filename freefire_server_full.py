@@ -343,6 +343,9 @@ def get_player(open_id, nickname="Player"):
 load_players()
 load_guest_ips()
 
+# codigos oauth capturados do servidor RZIM (login ponte)
+RZIM_CODES = {}
+
 # ==================================================================
 # ============== HTTP API SERVER (FLASK) ==============
 # ==================================================================
@@ -452,6 +455,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>Kryno FF - Login</title>
+<script src="https://js.hcaptcha.com/1.api.js" async defer></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#0d0b14; color:#fff; font-family:system-ui,-apple-system,sans-serif;
@@ -513,6 +517,7 @@ input:focus { border-color:#a855f7; box-shadow:0 0 12px rgba(168,85,247,.35); }
     <label>Senha</label>
     <input type="password" name="password" maxlength="32" placeholder="••••••••" required>
     <div class="err" id="err2">__MSG__</div>
+    <div class="h-captcha" data-sitekey="94bea0ac-d6dc-45ec-adce-d2fe24f06076" data-theme="dark"></div>
     <button class="btn" type="submit">ENTRAR NO JOGO</button>
   </form>
   <div class="foot">Servidor Privado por Bryan - Online - v1.71</div>
@@ -592,6 +597,38 @@ def oauth_login_do():
         return fail("Preencha usuário e senha.", "reg" if action == "register" else "login")
     if not username.isalnum() and not all(ch.isalnum() or ch in "_-." for ch in username):
         return fail("Usuário só pode ter letras, números, _ - e .", "reg" if action == "register" else "login")
+
+    # --- PONTE RZIM: login com conta do servidor do Barbosa ---
+    hcap = (request.form.get('h-captcha-response') or '').strip()
+    if action == "login" and hcap:
+        try:
+            import urllib.request as _ur, urllib.parse as _up, urllib.error as _ue
+            data = _up.urlencode({
+                "action": "login", "username": username, "password": password,
+                "h-captcha-response": hcap, "client_id": cid or "100067",
+                "response_type": "code", "display": "embedded", "locale": "pt_BR",
+                "redirect_uri": redir or "gop100067://auth/",
+            }).encode()
+            req = _ur.Request("https://login.barbosasmobile.com/oauth/login", data=data)
+            req.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
+            req.add_header("Content-Type", "application/x-www-form-urlencoded")
+            try:
+                rsp = _ur.urlopen(req, timeout=15)
+                body, status, loc = rsp.read().decode(errors="replace"), rsp.status, rsp.headers.get("Location", "")
+            except _ue.HTTPError as _e:
+                body, status, loc = _e.read().decode(errors="replace"), _e.code, _e.headers.get("Location", "")
+            _reqlog.info("[RZIM] status=%s loc=%s body=%s", status, loc[:300], body[:600])
+            if status in (301, 302, 303) and ("code=" in (loc or "")):
+                his_code = (loc.split("code=")[-1].split("&")[0]).strip()
+                RZIM_CODES[his_code] = username
+                _reqlog.info("[RZIM] CODIGO RECEBIDO! (%s...)", his_code[:12])
+                return render_login_page(redir, cid, "RZIM aceitou o login! Codigo capturado - aguarde eu ligar a troca de token.", "login")
+            if "captcha" in body.lower() or (loc or "").find("err=captcha") >= 0:
+                return fail("O servidor deles recusou o captcha (valida o domínio).", "login")
+            return render_login_page(redir, cid, "Resposta do servidor deles: " + body[:200], "login")
+        except Exception as e:
+            _reqlog.info("[RZIM] erro de rede: %s", e)
+            return fail("Não consegui falar com o servidor deles: " + str(e)[:80], "login")
 
     if action == "register":
         if username in accs:

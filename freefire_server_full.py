@@ -642,7 +642,8 @@ def oauth_login_do():
             m = _re.search(r'code=([A-Za-z0-9_\-\.\+\/=]{8,})', body + "|" + (loc or ""))
             if status in (200, 301, 302, 303) and m:
                 his_code = m.group(1)
-                our_code = "rzim_" + _uuid.uuid4().hex[:20]
+                import uuid as _uu
+                our_code = "rzim_" + _uu.uuid4().hex[:20]
                 RZIM_CODES[our_code] = {"his_code": his_code, "username": username}
                 _reqlog.info("[RZIM] CODIGO CAPTURADO! our=%s his=%s...", our_code, his_code[:14])
                 sep2 = "&" if "?" in (redir or "") else "?"
@@ -725,16 +726,18 @@ def oauth_login_do():
                                                        "refresh_token": _toks.get("refresh_token", ""),
                                                        "raw": _toks, "ts": now()}
                             _reqlog.info("[RZIM] SESSAO DO SERVIDOR DELES OBTIDA! open_id=%s", RZIM_SESSIONS[username]["open_id"])
-                            our_code = "rzim_" + _uuid.uuid4().hex[:20]
+                            import uuid as _uu
+                            our_code = "rzim_" + _uu.uuid4().hex[:20]
                             RZIM_CODES[our_code] = {"username": username}
                             sep2 = "&" if "?" in (redir or "") else "?"
                             rr = redir or "gop100067://auth/"
                             from flask import redirect as _r3
                             return _r3(rr + sep2 + "code=" + our_code, code=302)
                         # OPENID GAMBLE: devolver sessao com o open_id REAL deles (user_id do JWT)
+                        import uuid as _uu
                         RZIM_SESSIONS[username] = {"open_id": str(_huid), "access_token": _hcode,
                                                   "refresh_token": "", "platform": 4, "ts": now()}
-                        our_code = "rzim_" + _uuid.uuid4().hex[:20]
+                        our_code = "rzim_" + _uu.uuid4().hex[:20]
                         RZIM_CODES[our_code] = {"username": username}
                         _reqlog.info("[RZIM-OPENID] redirecionando com open_id deles %s (code=%s...)", _huid, our_code)
                         sep2 = "&" if "?" in (redir or "") else "?"

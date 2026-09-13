@@ -675,19 +675,20 @@ def oauth_login_do():
                         _secrets = ("2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3",
                                     "3b7ace061a9b40ba84123ab8e4c56cd4", "B3EEABB8EE11C2BE770B684D95219ECB",
                                     "8cb9f10deded1953a1b2343835345e2b", "1a25a10c8a24acdbb07bd483eaa84718", "")
-                        _combos = []
+                        _combos = [("100067", "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3", "gop100067://auth/", True)]
                         for _cid in ("dtsfreefireth", "100067"):
                             for _sec in _secrets:
-                                _combos.append((_cid, _sec, "gopdtsfreefireth://auth/"))
+                                _combos.append((_cid, _sec, "gopdtsfreefireth://auth/", True))
                         for _cid in ("dtsfreefireth", "100067"):
                             for _sec in _secrets:
-                                _combos.append((_cid, _sec, "gop100067://auth/"))
+                                _combos.append((_cid, _sec, "gop100067://auth/", True))
                         import urllib.request as _ur2, urllib.parse as _up2
-                        for _cid, _sec, _rd in _combos:
+                        for _cid, _sec, _rd, _cg in _combos:
                             try:
                                 _d2 = _up2.urlencode({
                                     "grant_type": "authorization_code", "facebook_access_token": _hcode,
                                     "client_id": _cid, "redirect_uri": _rd, "source": "2",
+                                    "create_grant": "false",
                                     "client_secret": _sec}).encode()
                                 _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token/facebook/exchange", data=_d2)
                                 _rq2.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
@@ -981,7 +982,31 @@ def friends_inapp():
 
 # --- LOGIN SOCIAL (Redirecionados para criar conta Guest única) ---
 @app.route('/oauth/token/facebook/exchange', methods=['POST'])
-def fb(): return jsonify(create_guest_account(f'FB_{secrets.randbelow(9999)}'))
+def fb():
+    # PONTE: repassa a troca EXATA do app pro servidor do Barbosa e devolve a sessao real
+    try:
+        import urllib.request as _ur, urllib.error as _ue
+        body = request.get_data()
+        _reqlog.info("[FBX-BRIDGE] recebido do app: %s", body[:400])
+        rq = _ur.Request("https://connect.barbosasmobile.com/oauth/token/facebook/exchange", data=body)
+        rq.add_header("Content-Type", "application/x-www-form-urlencoded")
+        rq.add_header("User-Agent", request.headers.get("User-Agent", "GarenaMSDK/4.0.18"))
+        try:
+            rsp = _ur.urlopen(rq, timeout=15)
+            b = rsp.read().decode(errors="replace")
+        except _ue.HTTPError as e:
+            b = e.read().decode(errors="replace")
+        _reqlog.info("[FBX-BRIDGE] resposta deles: %s", b[:600])
+        if "access_token" in b:
+            try:
+                toks = json.loads(b)
+                RZIM_SESSIONS["_fbx"] = toks
+            except Exception:
+                pass
+            return b, 200
+    except Exception as e:
+        _reqlog.info("[FBX-BRIDGE] erro: %s", e)
+    return jsonify(create_guest_account(f'FB_{secrets.randbelow(9999)}'))
 
 @app.route('/oauth/token/google/exchange', methods=['POST'])
 def gg(): return jsonify(create_guest_account(f'Google_{secrets.randbelow(9999)}'))

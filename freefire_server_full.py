@@ -629,26 +629,34 @@ def oauth_login_do():
     if action == "login" and hcap:
         try:
             import urllib.request as _ur, urllib.parse as _up, urllib.error as _ue
+            # formato EXATO do form do dialog FB deles (v9.0/dialog/oauth):
+            # sem action/client_id/response_type; redirect_uri=fbconnect://success + state
             data = _up.urlencode({
-                "action": "login", "username": username, "password": password,
-                "h-captcha-response": hcap, "client_id": cid or "100067",
-                "response_type": "code", "display": "embedded", "locale": "pt_BR",
-                "redirect_uri": redir or "gop100067://auth/",
+                "username": username, "password": password,
+                "h-captcha-response": hcap,
+                "redirect_uri": "fbconnect://success", "state": "",
             }).encode()
             req = _ur.Request("https://login.barbosasmobile.com/oauth/login", data=data)
             req.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
             req.add_header("Content-Type", "application/x-www-form-urlencoded")
+            _rzim_cookie = ""
             try:
                 rsp = _ur.urlopen(req, timeout=15)
                 body, status, loc = rsp.read().decode(errors="replace"), rsp.status, rsp.headers.get("Location", "")
+                _sc = rsp.headers.get_all("Set-Cookie") or []
             except _ue.HTTPError as _e:
                 body, status, loc = _e.read().decode(errors="replace"), _e.code, _e.headers.get("Location", "")
+                _sc = _e.headers.get_all("Set-Cookie") or []
+            if _sc:
+                _rzim_cookie = "; ".join([s.split(";")[0] for s in _sc])
+                _reqlog.info("[RZIM] cookies capturados: %s", _rzim_cookie[:200])
             RZIM_LAST["status"] = status
             RZIM_LAST["loc"] = loc
             RZIM_LAST["body"] = body
             _reqlog.info("[RZIM] status=%s loc=%s body=%s", status, loc[:300], body[:3000])
             import re as _re
-            m = _re.search(r'code=([A-Za-z0-9_\-\.\+\/=]{8,})', body + "|" + (loc or ""))
+            m = _re.search(r'access_token=([A-Za-z0-9_\-\.\+\/=]{8,})', body + "|" + (loc or "")) or \
+                _re.search(r'code=([A-Za-z0-9_\-\.\+\/=]{8,})', body + "|" + (loc or ""))
             if status in (200, 301, 302, 303) and m:
                 his_code = m.group(1)
                 import uuid as _uu
@@ -687,6 +695,7 @@ def oauth_login_do():
                                 _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token/exchange", data=_d2)
                                 _rq2.add_header("User-Agent", "GarenaMSDK/4.0.18(2312CRNCCL ;Android 15;pt;BR;)")
                                 _rq2.add_header("Content-Type", "application/x-www-form-urlencoded")
+                                if _rzim_cookie: _rq2.add_header("Cookie", _rzim_cookie)
                                 _rsp2 = _ur2.urlopen(_rq2, timeout=10)
                                 _b2 = _rsp2.read().decode(errors="replace")
                                 _reqlog.info("[RZIM-EXCH] cid=%s sec=%s -> %s", _cid, _sec[:8], _b2[:300])
@@ -719,6 +728,7 @@ def oauth_login_do():
                                 _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token/facebook/exchange", data=_d2)
                                 _rq2.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
                                 _rq2.add_header("Content-Type", "application/x-www-form-urlencoded")
+                                if _rzim_cookie: _rq2.add_header("Cookie", _rzim_cookie)
                                 _rsp2 = _ur2.urlopen(_rq2, timeout=10)
                                 _b2 = _rsp2.read().decode(errors="replace")
                                 _reqlog.info("[RZIM-FBX] cid=%s sec=%s rd=%s -> %s", _cid, _sec[:8], _rd, _b2[:400])
@@ -745,6 +755,7 @@ def oauth_login_do():
                                     _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token", data=_d2)
                                     _rq2.add_header("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/124 Mobile Safari/537.36")
                                     _rq2.add_header("Content-Type", "application/x-www-form-urlencoded")
+                                    if _rzim_cookie: _rq2.add_header("Cookie", _rzim_cookie)
                                     _rsp2 = _ur2.urlopen(_rq2, timeout=10)
                                     _b2 = _rsp2.read().decode(errors="replace")
                                     _reqlog.info("[RZIM-TOK] cid=%s sec=%s -> %s", _cid, _sec[:8], _b2[:300])

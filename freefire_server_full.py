@@ -672,7 +672,8 @@ def oauth_login_do():
                         # tenta trocar no auth deles com combinacoes de parametros
                         import urllib.request as _ur2, urllib.parse as _up2
                         _toks = None
-                        _secrets = ("3b7ace061a9b40ba84123ab8e4c56cd4", "B3EEABB8EE11C2BE770B684D95219ECB",
+                        _secrets = ("2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3",
+                                    "3b7ace061a9b40ba84123ab8e4c56cd4", "B3EEABB8EE11C2BE770B684D95219ECB",
                                     "8cb9f10deded1953a1b2343835345e2b", "1a25a10c8a24acdbb07bd483eaa84718", "")
                         _combos = []
                         for _cid in ("dtsfreefireth", "100067"):
@@ -704,7 +705,9 @@ def oauth_login_do():
                                 _reqlog.info("[RZIM-FBX] erro cid=%s sec=%s: %s", _cid, _sec[:8], _e2)
                         # fallback: endpoint garena antigo
                         if not _toks:
-                            for _cid, _sec in (("100067", "3b7ace061a9b40ba84123ab8e4c56cd4"),
+                            for _cid, _sec in (("100067", "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3"),
+                                               ("dtsfreefireth", "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3"),
+                                               ("100067", "3b7ace061a9b40ba84123ab8e4c56cd4"),
                                                ("100067", "B3EEABB8EE11C2BE770B684D95219ECB"),
                                                ("dtsfreefireth", "3b7ace061a9b40ba84123ab8e4c56cd4")):
                                 try:

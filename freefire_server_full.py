@@ -675,6 +675,32 @@ def oauth_login_do():
                         _secrets = ("2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3",
                                     "3b7ace061a9b40ba84123ab8e4c56cd4", "B3EEABB8EE11C2BE770B684D95219ECB",
                                     "8cb9f10deded1953a1b2343835345e2b", "1a25a10c8a24acdbb07bd483eaa84718", "")
+                        # PRIMEIRO: rota GOP oficial deles (/oauth/token/exchange) com params EXATOS do app
+                        for _cid, _sec in (("100067", "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3"),
+                                           ("dtsfreefireth", "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3"),
+                                           ("100067", "3b7ace061a9b40ba84123ab8e4c56cd4")):
+                            try:
+                                _d2 = _up2.urlencode({
+                                    "grant_type": "authorization_code", "code": _hcode,
+                                    "redirect_uri": "gop100067://auth/", "source": "2",
+                                    "client_secret": _sec, "client_id": _cid}).encode()
+                                _rq2 = _ur2.Request("https://connect.barbosasmobile.com/oauth/token/exchange", data=_d2)
+                                _rq2.add_header("User-Agent", "GarenaMSDK/4.0.18(2312CRNCCL ;Android 15;pt;BR;)")
+                                _rq2.add_header("Content-Type", "application/x-www-form-urlencoded")
+                                _rsp2 = _ur2.urlopen(_rq2, timeout=10)
+                                _b2 = _rsp2.read().decode(errors="replace")
+                                _reqlog.info("[RZIM-EXCH] cid=%s sec=%s -> %s", _cid, _sec[:8], _b2[:300])
+                                if ("access_token" in _b2) or ("open_id" in _b2):
+                                    try:
+                                        _toks = _js.loads(_b2)
+                                    except Exception:
+                                        _toks = {"raw_body": _b2}
+                                    break
+                            except Exception as _e2:
+                                try:
+                                    _reqlog.info("[RZIM-EXCH] erro cid=%s: %s", _cid, _e2)
+                                except Exception:
+                                    pass
                         _combos = [("100067", "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3", "gop100067://auth/", True)]
                         for _cid in ("dtsfreefireth", "100067"):
                             for _sec in _secrets:

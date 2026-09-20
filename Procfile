@@ -1,1 +1,1 @@
-web: gunicorn freefire_server_full:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - --error-logfile -
+web: gunicorn aisaka_server:app --workers 1 --worker-class gthread --threads 8 --timeout 120 --bind 0.0.0.0:$PORT --access-logfile - --error-logfile -

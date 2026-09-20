@@ -1,1 +1,1 @@
- redeploy 2026-09-11: restaurar HEAD a5ad6f7 (fixes guest)
+roblox-server-v2 2026-09-20: fix catalog -> catalog.roblox.com + CDN images proxy

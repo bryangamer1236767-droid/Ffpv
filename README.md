@@ -1,28 +1,10 @@
-# Free Fire Private Server
+# Servidor Brayan Roblox v2
 
-Servidor privado para Free Fire com API HTTP + Game Server TCP/UDP.
+Reconstrução fiel do servidor AISAKA/CAELUS com correções:
+- Catálogo apontando para catalog.roblox.com (antes apis.roblox.com, que retornava vazio)
+- Imagens do CDN rbxcdn repassadas (antes voltava JSON vazio, imagens cinzas)
+- Todo o resto igual: settings, device/initialize, account-info, batch thumbnails,
+  universal-app-config, crash upload, download do APK, _logs, signalr
 
-## Deploy no Railway
-
-1. Criar conta em railway.app
-2. New Project -> Deploy from GitHub
-3. Subir os arquivos deste repositório
-4. Railway gera a URL automaticamente
-
-## Variáveis de Ambiente
-
-- PORT=5000 (auto no Railway)
-- GAME_SERVER_IP=seu_ip (IP do servidor de jogo)
-- GAME_SERVER_PORT=2205
-
-## Endpoints
-
-- /health - status do servidor
-- /app/info/get - config do jogo
-- /oauth/guest/register - registar guest
-- /oauth/guest/token/grant - login guest
-- /oauth/token - trocar código por token
-- /api/heartbeat - manter sessão
-- /api/msdk - config e servidor de jogo
-- /oauth/user/info/get - info do jogador
-- /app/point/get_balance - saldo (99999 diamantes)
+Branch usada pelo serviço web do Railway (projeto captivating-magic).
+O código do Free Fire segue em main e nas releases.

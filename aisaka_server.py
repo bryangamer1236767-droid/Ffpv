@@ -212,40 +212,68 @@ def catalog(sub):
 
 
 import re as _re
+import os as _os
 
 
-def _validate_username(u, ctx="Signup"):
+def _load_accounts():
+    p = _os.path.join(DATA_DIR, "accounts.json")
+    try:
+        accs = json.load(open(p))
+        if isinstance(accs, list) and accs:
+            return accs
+    except Exception:
+        pass
+    accs = [{"username": "administrador97", "password": "997169332",
+             "userId": 1, "displayName": "administrador97", "birthday": "2011-05-11"}]
+    try:
+        json.dump(accs, open(p, "w"), indent=2)
+    except Exception:
+        pass
+    return accs
+
+
+def _find_account(username):
+    if not username:
+        return None
+    u = username.strip().lower()
+    for a in _load_accounts():
+        if str(a.get("username", "")).lower() == u:
+            return a
+    return None
+
+
+def _u_code(u):
     if not u:
-        return False, 1, "A valid username is required."
+        return 1, "Username is required"
     if len(u) < 3 or len(u) > 20:
-        return False, 4, "That username is too short or too long."
+        return 3, "Username is too short or too long"
     if u.startswith("_") or u.endswith("_"):
-        return False, 5, "Usernames cannot start or end with an underscore."
+        return 4, "Username cannot start or end with an underscore"
     if "__" in u:
-        return False, 6, "Usernames cannot have more than one underscore in a row."
+        return 5, "Username cannot have more than one underscore in a row"
     if " " in u:
-        return False, 7, "Usernames cannot contain spaces."
+        return 6, "Username cannot contain spaces"
     if not _re.match(r"^[A-Za-z0-9_]+$", u):
-        return False, 8, "Usernames can only contain letters, numbers and underscores."
-    return True, 1, "Username is valid."
+        return 7, "Username can only contain letters, numbers and underscores"
+    return 0, "Username is valid"
 
 
-def _validate_password(p, u=""):
+def _p_code(p, u=""):
     if not p:
-        return False, 3, "Password is required."
-    if len(p) < 8:
-        return False, 3, "Your password must be at least 8 characters."
+        return 1, "Password is required"
+    if len(p) < 6:
+        return 2, "Password is too short"
     if u and p.lower() == u.lower():
-        return False, 4, "Your password cannot be the same as your username."
-    return True, 1, "Password is valid."
+        return 3, "Password cannot be the same as the username"
+    return 0, "Password is valid"
 
 
 @app.route("/signup/is-username-valid", methods=["GET"])
 def signup_is_username_valid():
     log_request()
     username = request.args.get("username", "")
-    ok, code, msg = _validate_username(username)
-    resp = {"IsValid": ok, "Errors": [] if ok else [{"Code": code, "Message": msg}]}
+    code, msg = _u_code(username)
+    resp = {"code": code, "message": msg}
     sample("is_username_valid", {"username": username, "resp": resp})
     return jsonify(resp)
 
@@ -255,10 +283,58 @@ def signup_is_password_valid():
     log_request()
     username = request.args.get("username", "")
     password = request.args.get("password", "")
-    ok, code, msg = _validate_password(password, username)
-    resp = {"IsValid": ok, "Errors": [] if ok else [{"Code": code, "Message": msg}]}
+    code, msg = _p_code(password, username)
+    resp = {"IsValid": code == 0, "ErrorMessage": msg, "ErrorCode": code,
+            "code": code, "message": msg}
     sample("is_password_valid", {"username": username, "resp": resp})
     return jsonify(resp)
+
+
+@app.route("/v2/usernames/validate", methods=["GET", "POST"])
+def v2_usernames_validate():
+    log_request()
+    username = request.args.get("username") or request.args.get("request.username") or ""
+    code, msg = _u_code(username)
+    return jsonify({"code": code, "message": msg})
+
+
+@app.route("/v1/validators/username", methods=["GET"])
+def v1_validators_username():
+    log_request()
+    username = request.args.get("username", "")
+    return jsonify({"didGenerateNewUsername": False, "suggestedUsername": username})
+
+
+@app.route("/v2/passwords/validate", methods=["GET"])
+def v2_passwords_validate():
+    log_request()
+    username = request.args.get("username", "")
+    password = request.args.get("password", "")
+    code, msg = _p_code(password, username)
+    return jsonify({"code": code, "message": msg})
+
+
+def _do_login(username, password):
+    acc = _find_account(username)
+    r = jsonify({"user": {"id": (acc or {}).get("userId", 1),
+                          "name": (acc or {}).get("username", "Player1"),
+                          "displayName": (acc or {}).get("displayName", "Player1")}})
+    r.headers["Set-Cookie"] = ".ROBLOSECURITY=EMULATED_SESSION_TOKEN_PLAYER1; Path=/; HttpOnly"
+    return r
+
+
+@app.route("/v2/login", methods=["POST"])
+def v2_login():
+    log_request()
+    body = request.get_json(silent=True) or {}
+    return _do_login(body.get("cvalue", ""), body.get("password", ""))
+
+
+@app.route("/v1/login", methods=["POST"])
+def v1_login():
+    log_request()
+    body = request.get_json(silent=True) or {}
+    return _do_login(body.get("cvalue", ""), body.get("password", ""))
 
 
 @app.route("/v2/signup", methods=["POST"])
@@ -267,24 +343,23 @@ def v2_signup():
     body = request.get_json(silent=True) or {}
     username = body.get("username", "Player1")
     password = body.get("password", "")
-    ok_u, _, msg_u = _validate_username(username)
-    ok_p, _, msg_p = _validate_password(password, username)
-    if not ok_u:
-        return jsonify({"errors": [{"code": 5, "message": msg_u}]}), 403
-    if not ok_p:
-        return jsonify({"errors": [{"code": 7, "message": msg_p}]}), 403
+    code, msg = _u_code(username)
+    if code != 0:
+        return jsonify({"errors": [{"code": 5, "message": msg}]}), 403
+    code, msg = _p_code(password, username)
+    if code != 0:
+        return jsonify({"errors": [{"code": 7, "message": msg}]}), 403
+    accs = _load_accounts()
+    p = _os.path.join(DATA_DIR, "accounts.json")
+    if not _find_account(username):
+        accs.append({"username": username, "password": password, "userId": len(accs) + 1,
+                     "displayName": username, "birthday": body.get("birthday", "")})
+    try:
+        json.dump(accs, open(p, "w"), indent=2)
+    except Exception:
+        pass
     resp = {"userId": 1, "starterPlaceId": 1818}
     sample("v2_signup", {"username": username, "resp": resp})
-    r = jsonify(resp)
-    r.headers["Set-Cookie"] = ".ROBLOSECURITY=EMULATED_SESSION_TOKEN_PLAYER1; Path=/; HttpOnly"
-    return r
-
-
-@app.route("/v2/login", methods=["POST"])
-def v2_login():
-    log_request()
-    resp = {"user": {"id": 1, "name": "Player1", "displayName": "Player1"}}
-    sample("v2_login", resp)
     r = jsonify(resp)
     r.headers["Set-Cookie"] = ".ROBLOSECURITY=EMULATED_SESSION_TOKEN_PLAYER1; Path=/; HttpOnly"
     return r

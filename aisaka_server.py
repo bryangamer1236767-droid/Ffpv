@@ -210,6 +210,20 @@ def batch():
         except Exception:
             pass
     resp = proxy_json(UPSTREAMS["thumbnails"] + "/v1/batch", path_override="")
+    # CORRECAO: reescrever URLs do CDN pra apontar pro nosso servidor,
+    # porque o cliente nao consegue baixar direto do rbxcdn (da imagem cinza)
+    try:
+        txt = resp.get_data(as_text=True)
+        base = server_base()
+        for h in ("https://tr.rbxcdn.com/", "https://t0.rbxcdn.com/",
+                  "https://t1.rbxcdn.com/", "https://t2.rbxcdn.com/",
+                  "https://t3.rbxcdn.com/", "https://t4.rbxcdn.com/",
+                  "https://t5.rbxcdn.com/", "https://t6.rbxcdn.com/",
+                  "https://t7.rbxcdn.com/"):
+            txt = txt.replace(h, base + "/")
+        resp = Response(txt, status=resp.status_code, content_type="application/json")
+    except Exception:
+        pass
     try:
         sample("v1_batch_response", json.loads(resp.get_data(as_text=True)))
     except Exception:

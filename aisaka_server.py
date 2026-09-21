@@ -211,6 +211,85 @@ def catalog(sub):
     return proxy_json(UPSTREAMS["catalog"] + "/" + sub + q, path_override="", tag="PROXY")
 
 
+import re as _re
+
+
+def _validate_username(u, ctx="Signup"):
+    if not u:
+        return False, 1, "A valid username is required."
+    if len(u) < 3 or len(u) > 20:
+        return False, 4, "That username is too short or too long."
+    if u.startswith("_") or u.endswith("_"):
+        return False, 5, "Usernames cannot start or end with an underscore."
+    if "__" in u:
+        return False, 6, "Usernames cannot have more than one underscore in a row."
+    if " " in u:
+        return False, 7, "Usernames cannot contain spaces."
+    if not _re.match(r"^[A-Za-z0-9_]+$", u):
+        return False, 8, "Usernames can only contain letters, numbers and underscores."
+    return True, 1, "Username is valid."
+
+
+def _validate_password(p, u=""):
+    if not p:
+        return False, 3, "Password is required."
+    if len(p) < 8:
+        return False, 3, "Your password must be at least 8 characters."
+    if u and p.lower() == u.lower():
+        return False, 4, "Your password cannot be the same as your username."
+    return True, 1, "Password is valid."
+
+
+@app.route("/signup/is-username-valid", methods=["GET"])
+def signup_is_username_valid():
+    log_request()
+    username = request.args.get("username", "")
+    ok, code, msg = _validate_username(username)
+    resp = {"IsValid": ok, "Errors": [] if ok else [{"Code": code, "Message": msg}]}
+    sample("is_username_valid", {"username": username, "resp": resp})
+    return jsonify(resp)
+
+
+@app.route("/signup/is-password-valid", methods=["GET"])
+def signup_is_password_valid():
+    log_request()
+    username = request.args.get("username", "")
+    password = request.args.get("password", "")
+    ok, code, msg = _validate_password(password, username)
+    resp = {"IsValid": ok, "Errors": [] if ok else [{"Code": code, "Message": msg}]}
+    sample("is_password_valid", {"username": username, "resp": resp})
+    return jsonify(resp)
+
+
+@app.route("/v2/signup", methods=["POST"])
+def v2_signup():
+    log_request()
+    body = request.get_json(silent=True) or {}
+    username = body.get("username", "Player1")
+    password = body.get("password", "")
+    ok_u, _, msg_u = _validate_username(username)
+    ok_p, _, msg_p = _validate_password(password, username)
+    if not ok_u:
+        return jsonify({"errors": [{"code": 5, "message": msg_u}]}), 403
+    if not ok_p:
+        return jsonify({"errors": [{"code": 7, "message": msg_p}]}), 403
+    resp = {"userId": 1, "starterPlaceId": 1818}
+    sample("v2_signup", {"username": username, "resp": resp})
+    r = jsonify(resp)
+    r.headers["Set-Cookie"] = ".ROBLOSECURITY=EMULATED_SESSION_TOKEN_PLAYER1; Path=/; HttpOnly"
+    return r
+
+
+@app.route("/v2/login", methods=["POST"])
+def v2_login():
+    log_request()
+    resp = {"user": {"id": 1, "name": "Player1", "displayName": "Player1"}}
+    sample("v2_login", resp)
+    r = jsonify(resp)
+    r.headers["Set-Cookie"] = ".ROBLOSECURITY=EMULATED_SESSION_TOKEN_PLAYER1; Path=/; HttpOnly"
+    return r
+
+
 @app.route("/mobileapi/check-app-version", methods=["GET"])
 def check_app_version():
     log_request()

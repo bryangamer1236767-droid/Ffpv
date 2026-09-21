@@ -194,7 +194,27 @@ def account_info():
 @app.route("/v1/batch", methods=["POST", "GET"])
 def batch():
     log_request()
-    return proxy_json(UPSTREAMS["thumbnails"] + "/v1/batch", path_override="")
+    raw = request.get_data() or b""
+    dec = raw
+    if request.headers.get("Content-Encoding", "").lower() == "gzip" and raw:
+        import gzip as _gz
+        try:
+            dec = _gz.decompress(raw)
+        except Exception:
+            dec = raw
+    try:
+        sample("v1_batch_request", json.loads(dec.decode("utf-8", errors="replace")))
+    except Exception:
+        try:
+            log_line("response_samples.log", "v1_batch_request_raw: %s" % dec[:2000])
+        except Exception:
+            pass
+    resp = proxy_json(UPSTREAMS["thumbnails"] + "/v1/batch", path_override="")
+    try:
+        sample("v1_batch_response", json.loads(resp.get_data(as_text=True)))
+    except Exception:
+        pass
+    return resp
 
 
 @app.route("/universal-app-configuration/<path:sub>", methods=["GET", "POST"])

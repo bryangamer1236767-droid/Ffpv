@@ -43,6 +43,7 @@ KNOWN_PREFIXES = (
     "/v1/settings", "/device/initialize", "/users/account-info", "/v1/batch",
     "/universal-app-configuration", "/catalog/", "/mobileapi/", "/notifications/",
     "/crash/upload", "/download/", "/_logs", "/health", "/avatar/v1/",
+    "/v1/enrollments", "/v1/get-enrollments", "/home", "/games", "/img/",
 )
 
 CDN_PATTERNS = [
@@ -133,7 +134,7 @@ def server_base():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "online", "server": "AISAKA/CAELUS", "version": "0.1.0"})
+    return jsonify({"status": "online", "server": "AISAKA/CAELUS", "version": "0.2.0"})
 
 
 @app.route("/v1/settings/application", methods=["GET"])
@@ -349,6 +350,10 @@ def v2_passwords_validate():
 
 
 def _do_login(username, password):
+    try:
+        open(_os.path.join(DATA_DIR, "last_login.txt"), "w").write(username or "")
+    except Exception:
+        pass
     acc = _find_account(username)
     r = jsonify({"user": {"id": (acc or {}).get("userId", 1),
                           "name": (acc or {}).get("username", "Player1"),
@@ -469,6 +474,162 @@ def logs_endpoint():
     except Exception:
         lines = []
     return jsonify({"lines": lines})
+
+
+# ---------------- enrollments (AB tests) ----------------
+# CORRECAO: o cliente decide qual versao da tela usar (Lua nativo vs WebView)
+# lendo o status desses testes. Antes devolviamos data vazio e a home
+# ficava cinza (implementacao Lua aponta pra subdominios que nao existem).
+# Devolver "NotEnrolled" faz o app usar as telas WebView (HTML do nosso servidor).
+@app.route("/v1/enrollments", methods=["POST"])
+@app.route("/v1/get-enrollments", methods=["POST"])
+def v1_enrollments():
+    log_request()
+    body = request.get_json(silent=True)
+    items = []
+    if isinstance(body, list):
+        for e in body:
+            if isinstance(e, dict) and e.get("ExperimentName"):
+                items.append({
+                    "ExperimentName": e.get("ExperimentName"),
+                    "SubjectType": e.get("SubjectType", "BrowserTracker"),
+                    "SubjectTargetId": e.get("SubjectTargetId", 0),
+                    "Status": "NotEnrolled",
+                })
+    sample("enrollments", {"pedidos": len(items)})
+    return jsonify({"data": items, "errors": None})
+
+
+# ---------------- telas WebView (Home / Jogos) ----------------
+GAMES = [
+    ("Adopt Me!", 920587237),
+    ("Brookhaven RP", 4924922222),
+    ("Tower of Hell", 1962086868),
+    ("Blox Fruits", 275038597),
+    ("Doors", 6516141729),
+    ("Jailbreak", 606849621),
+    ("Murder Mystery 2", 142823291),
+    ("Natural Disaster Survival", 189707),
+    ("Arsenal", 286090429),
+    ("Work at a Pizza Place", 192800),
+]
+
+ICON_CACHE = {}
+PLACEHOLDER_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c626001000000ffff03000006000557bfabd40000000049454e44ae426082"
+)
+
+
+def _page(title, body, active="home"):
+    nav = (
+        '<div class="nav"><a class="logo" href="/home">CAELUS</a>'
+        '<div class="tabs"><a href="/home" class="%s">Início</a>'
+        '<a href="/games" class="%s">Jogos</a></div></div>'
+        % ("on" if active == "home" else "", "on" if active == "games" else "")
+    )
+    return """<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>%s</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#191b1f;color:#e8e8e8;font-family:system-ui,-apple-system,Roboto,sans-serif;padding-bottom:32px}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:#232529;position:sticky;top:0}
+.logo{color:#fff;font-weight:800;font-size:18px;text-decoration:none;letter-spacing:1px}
+.tabs a{color:#9aa0a6;text-decoration:none;font-size:14px;font-weight:600;margin-left:14px;padding:6px 2px}
+.tabs a.on{color:#fff;border-bottom:2px solid #f5c518}
+h2{font-size:16px;margin:18px 16px 10px;color:#fff}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:0 16px}
+.card{background:#232529;border-radius:12px;overflow:hidden;text-decoration:none;display:block}
+.card img{width:100%%;aspect-ratio:1;object-fit:cover;background:#2e3138;display:block}
+.card .nm{padding:9px 10px;font-size:13px;font-weight:600;color:#e8e8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.big{display:flex;gap:14px;padding:16px}
+.big img{width:120px;height:120px;border-radius:12px;background:#2e3138}
+.big .nm{font-size:20px;font-weight:800;color:#fff;margin-bottom:6px}
+.big .by{font-size:12px;color:#9aa0a6}
+.play{display:block;margin:18px 16px;padding:14px;background:#00b06f;color:#fff;text-align:center;
+border-radius:10px;font-size:16px;font-weight:800;text-decoration:none}
+.desc{padding:0 16px;font-size:13px;color:#b9bdc4;line-height:1.5;white-space:pre-wrap}
+.hello{padding:14px 16px 0;font-size:13px;color:#9aa0a6}
+</style></head><body>%s<div class="hello">Bem-vindo de volta!</div>%s</body></html>""" % (title, nav, body)
+
+
+def _greet():
+    try:
+        u = open(_os.path.join(DATA_DIR, "last_login.txt")).read().strip()
+        if u:
+            return u
+    except Exception:
+        pass
+    return ""
+
+
+@app.route("/home", methods=["GET"])
+@app.route("/home/", methods=["GET"])
+def page_home():
+    log_request()
+    cards = "".join(
+        '<a class="card" href="/games/%d"><img src="/img/gameicon/%d" alt=""><div class="nm">%s</div></a>'
+        % (pid, pid, name) for name, pid in GAMES
+    )
+    body = "<h2>Populares</h2><div class=grid>%s</div>" % cards
+    greet = _greet()
+    if greet:
+        body = body.replace("Bem-vindo de volta!", "Ei, %s!" % greet)
+    return _page("Início", body, "home")
+
+
+@app.route("/games", methods=["GET"])
+@app.route("/games/", methods=["GET"])
+def page_games():
+    log_request()
+    cards = "".join(
+        '<a class="card" href="/games/%d"><img src="/img/gameicon/%d" alt=""><div class="nm">%s</div></a>'
+        % (pid, pid, name) for name, pid in GAMES
+    )
+    body = "<h2>Todos os jogos</h2><div class=grid>%s</div>" % cards
+    return _page("Jogos", body, "games")
+
+
+@app.route("/games/<int:place_id>", methods=["GET"])
+def page_game_details(place_id):
+    log_request()
+    name = "Jogo %d" % place_id
+    for gname, gpid in GAMES:
+        if gpid == place_id:
+            name = gname
+            break
+    desc = "Bora jogar! Servidor Caelus/Roblox."
+    by = "Roblox"
+    body = (
+        '<div class="big"><img src="/img/gameicon/%d"><div><div class="nm">%s</div>'
+        '<div class="by">%s</div></div></div>'
+        '<a class="play" href="robloxmobile://experiences/start?placeId=%d">▶ Jogar</a>'
+        '<div class="desc">%s</div>'
+        % (place_id, name, by, place_id, desc or "Sem descrição.")
+    )
+    return _page(name, body, "games")
+
+
+@app.route("/img/gameicon/<int:place_id>", methods=["GET"])
+def img_gameicon(place_id):
+    if place_id in ICON_CACHE:
+        return Response(ICON_CACHE[place_id], content_type="image/png")
+    try:
+        r = rq.get(
+            "https://thumbnails.roblox.com/v1/places/gameicons?placeIds=%d&size=512x512&format=Png&isCircular=false"
+            % place_id, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        d0 = ((r.json().get("data") or [{}])[0])
+        url = d0.get("imageUrl") or d0.get("targetUrl")
+        if url:
+            img = rq.get(url, timeout=20).content
+            if len(ICON_CACHE) < 200:
+                ICON_CACHE[place_id] = img
+            return Response(img, content_type="image/png")
+    except Exception as e:
+        log_line("requests.log", "IMG gameicon %d FAIL (%s)" % (place_id, e))
+    return Response(PLACEHOLDER_PNG, content_type="image/png")
 
 
 # ---------------- catch-all ----------------
